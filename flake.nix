@@ -1,0 +1,158 @@
+{
+  description = "Non-interactive git hunk staging tool";
+
+  inputs = {
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    crane.url = "github:ipetkov/crane";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    git-hooks-nix = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs =
+    inputs@{
+      flake-parts,
+      crane,
+      rust-overlay,
+      ...
+    }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      imports = [
+        inputs.treefmt-nix.flakeModule
+        inputs.git-hooks-nix.flakeModule
+      ];
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+        "x86_64-darwin"
+      ];
+      perSystem =
+        {
+          config,
+          self',
+          inputs',
+          pkgs,
+          system,
+          ...
+        }:
+        let
+          pkgs = import inputs.nixpkgs {
+            inherit system;
+            overlays = [ (import rust-overlay) ];
+          };
+
+          rustToolchain = pkgs.rust-bin.stable.latest.default;
+          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+
+          # Common source filtering for Rust projects
+          src = craneLib.cleanCargoSource ./.;
+
+          # Common build inputs
+          commonArgs = {
+            inherit src;
+            strictDeps = true;
+
+            nativeBuildInputs = with pkgs; [
+              pkg-config
+            ];
+
+            buildInputs =
+              with pkgs;
+              [
+                openssl
+                zlib
+                libgit2
+              ]
+              ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+                pkgs.darwin.apple_sdk.frameworks.Security
+                pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+                pkgs.libiconv
+              ];
+
+            # Use vendored libgit2
+            LIBGIT2_NO_VENDOR = "0";
+          };
+
+          # Build only the dependencies (cached separately)
+          cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+          # Build the actual package
+          git-stager = craneLib.buildPackage (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+            }
+          );
+        in
+        {
+          packages = {
+            default = git-stager;
+            git-stager = git-stager;
+          };
+
+          checks = {
+            inherit git-stager;
+
+            # Run clippy
+            git-stager-clippy = craneLib.cargoClippy (
+              commonArgs
+              // {
+                inherit cargoArtifacts;
+                cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+              }
+            );
+
+            # Check formatting
+            git-stager-fmt = craneLib.cargoFmt {
+              inherit src;
+            };
+
+            # Run tests
+            git-stager-test = craneLib.cargoTest (
+              commonArgs
+              // {
+                inherit cargoArtifacts;
+              }
+            );
+          };
+
+          treefmt = {
+            projectRootFile = "flake.nix";
+            programs.rustfmt.enable = true;
+            programs.nixfmt.enable = true;
+          };
+
+          pre-commit.settings.hooks = {
+            treefmt.enable = true;
+          };
+
+          devShells.default = craneLib.devShell {
+            checks = self'.checks;
+
+            shellHook = ''
+              ${config.pre-commit.shellHook}
+            '';
+
+            packages =
+              with pkgs;
+              [
+                rust-analyzer
+                cargo-watch
+                cargo-edit
+              ]
+              ++ config.pre-commit.settings.enabledPackages;
+          };
+        };
+    };
+}

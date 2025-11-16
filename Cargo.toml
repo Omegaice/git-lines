@@ -1,0 +1,8 @@
+[package]
+name = "git-stager"
+version = "0.1.0"
+edition = "2024"
+description = "Non-interactive git hunk staging tool"
+license = "MIT"
+
+[dependencies]
