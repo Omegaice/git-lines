@@ -3,9 +3,9 @@
 ## The Diff
 
 ```bash
-$ git diff -U0 flake.nix
-@@ -136,0 +137 @@
-+      debug = true;
+$ git-stager diff flake.nix
+flake.nix:
+  +137:       debug = true;
 ```
 
 ## What to Stage

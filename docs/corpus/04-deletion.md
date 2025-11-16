@@ -3,9 +3,9 @@
 ## The Diff
 
 ```bash
-$ git diff -U0 home/terminal/shell/zsh.nix
-@@ -15 +14,0 @@
--      enableAutosuggestions = true;
+$ git-stager diff home/terminal/shell/zsh.nix
+home/terminal/shell/zsh.nix:
+  -15:	      enableAutosuggestions = true;
 ```
 
 ## What to Stage
@@ -18,7 +18,7 @@ The deletion of the line that was at old line 15.
 git-stager stage home/terminal/shell/zsh.nix:-15
 ```
 
-The `-15` references old line 15 (the deleted line), matching hunk header syntax `@@ -15 ... @@`.
+The `-15` references old line 15 (the deleted line), matching the line number shown in the diff output.
 
 ## Expected Result
 
@@ -31,6 +31,6 @@ $ git diff --cached home/terminal/shell/zsh.nix
 ## Why This Matters
 
 Deletions don't have a "new line number". Proves:
-- Reference scheme using `-N` for old line N (matches hunk header style)
+- Reference scheme using `-N` for old line N (matches diff output)
 - Construct deletion patch
 - Handle hunk header for removals: `@@ -N,count +M,0 @@`

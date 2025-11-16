@@ -3,13 +3,13 @@
 ## The Diff
 
 ```bash
-$ git diff -U0 home/gtk.nix
-@@ -10,2 +10,3 @@
--    gtk.theme.name = "Adwaita";
--    gtk.iconTheme.name = "Papirus";
-+    # Theme managed by Stylix
-+    gtk.iconTheme.name = "Papirus-Dark";
-+    gtk.cursorTheme.size = 24;
+$ git-stager diff home/gtk.nix
+home/gtk.nix:
+  -10:	    gtk.theme.name = "Adwaita";
+  -11:	    gtk.iconTheme.name = "Papirus";
+  +10:	    # Theme managed by Stylix
+  +11:	    gtk.iconTheme.name = "Papirus-Dark";
+  +12:	    gtk.cursorTheme.size = 24;
 ```
 
 ## What to Stage

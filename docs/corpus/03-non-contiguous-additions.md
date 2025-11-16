@@ -3,11 +3,11 @@
 ## The Diff
 
 ```bash
-$ git diff -U0 home/programs/vscode/default.nix
-@@ -39,0 +40,3 @@
-+        # Allow Stylix to override terminal font
-+        "terminal.integrated.fontFamily" = lib.mkDefault "monospace";
-+        "direnv.restart.automatic" = true;
+$ git-stager diff home/programs/vscode/default.nix
+home/programs/vscode/default.nix:
+  +40:	        # Allow Stylix to override terminal font
+  +41:	        "terminal.integrated.fontFamily" = lib.mkDefault "monospace";
+  +42:	        "direnv.restart.automatic" = true;
 ```
 
 ## What to Stage

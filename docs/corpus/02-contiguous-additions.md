@@ -3,13 +3,13 @@
 ## The Diff
 
 ```bash
-$ git diff -U0 flake.nix
-@@ -38,0 +39,5 @@
-+
-+    stylix = {
-+      url = "github:nix-community/stylix";
-+      inputs.nixpkgs.follows = "nixpkgs";
-+    };
+$ git-stager diff flake.nix
+flake.nix:
+  +39:
+  +40:	    stylix = {
+  +41:	      url = "github:nix-community/stylix";
+  +42:	      inputs.nixpkgs.follows = "nixpkgs";
+  +43:	    };
 ```
 
 ## What to Stage
