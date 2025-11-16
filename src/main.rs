@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use git_stager::GitStager;
 
 #[derive(Parser)]
 #[command(name = "git-stager")]
@@ -19,11 +20,15 @@ enum Commands {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+    let stager = GitStager::new(".");
 
     match cli.command {
         Commands::Stage { file_refs } => {
-            eprintln!("Staging: {:?}", file_refs);
-            eprintln!("(Not yet implemented)");
+            for file_ref in &file_refs {
+                stager
+                    .stage(file_ref)
+                    .map_err(|e| format!("Failed to stage '{}': {}", file_ref, e))?;
+            }
         }
     }
 

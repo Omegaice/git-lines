@@ -1,3 +1,4 @@
+use git_stager::GitStager;
 use git2::{Repository, Signature};
 use std::fs;
 use std::path::Path;
@@ -127,9 +128,17 @@ fn case_01_single_addition() {
     let diff = fixture.git_diff("flake.nix");
     insta::assert_snapshot!("case_01_initial_diff", diff);
 
-    // TODO: Run git-stager stage flake.nix:137
-    // TODO: Verify staged diff
-    // TODO: Verify remaining unstaged diff
+    // Stage line 137
+    let stager = GitStager::new(fixture.path());
+    stager.stage("flake.nix:137").unwrap();
+
+    // Verify staged diff
+    let staged = fixture.git_diff_cached("flake.nix");
+    insta::assert_snapshot!("case_01_staged", staged);
+
+    // Verify remaining unstaged diff
+    let remaining = fixture.git_diff("flake.nix");
+    insta::assert_snapshot!("case_01_remaining", remaining);
 }
 
 // =============================================================================
@@ -160,7 +169,17 @@ fn case_02_contiguous_additions() {
     let diff = fixture.git_diff("flake.nix");
     insta::assert_snapshot!("case_02_initial_diff", diff);
 
-    // TODO: Run git-stager stage flake.nix:39..43
+    // Stage lines 39-43 (the full range)
+    let stager = GitStager::new(fixture.path());
+    stager.stage("flake.nix:39..43").unwrap();
+
+    // Verify staged diff
+    let staged = fixture.git_diff_cached("flake.nix");
+    insta::assert_snapshot!("case_02_staged", staged);
+
+    // Verify remaining unstaged diff (should be empty)
+    let remaining = fixture.git_diff("flake.nix");
+    insta::assert_snapshot!("case_02_remaining", remaining);
 }
 
 // =============================================================================
@@ -191,8 +210,17 @@ fn case_03_non_contiguous_additions() {
     let diff = fixture.git_diff("default.nix");
     insta::assert_snapshot!("case_03_initial_diff", diff);
 
-    // TODO: Run git-stager stage default.nix:40..41
-    // Should stage lines 40-41, leave line 42 unstaged
+    // Stage lines 40-41 only (skip line 42)
+    let stager = GitStager::new(fixture.path());
+    stager.stage("default.nix:40..41").unwrap();
+
+    // Verify staged diff (should have lines 40-41)
+    let staged = fixture.git_diff_cached("default.nix");
+    insta::assert_snapshot!("case_03_staged", staged);
+
+    // Verify remaining unstaged diff (should have line 42)
+    let remaining = fixture.git_diff("default.nix");
+    insta::assert_snapshot!("case_03_remaining", remaining);
 }
 
 // =============================================================================
@@ -235,7 +263,17 @@ fn case_04_deletion() {
     let diff = fixture.git_diff("zsh.nix");
     insta::assert_snapshot!("case_04_initial_diff", diff);
 
-    // TODO: Run git-stager stage zsh.nix:-15
+    // Stage deletion of line 15
+    let stager = GitStager::new(fixture.path());
+    stager.stage("zsh.nix:-15").unwrap();
+
+    // Verify staged diff
+    let staged = fixture.git_diff_cached("zsh.nix");
+    insta::assert_snapshot!("case_04_staged", staged);
+
+    // Verify remaining unstaged diff (should be empty)
+    let remaining = fixture.git_diff("zsh.nix");
+    insta::assert_snapshot!("case_04_remaining", remaining);
 }
 
 // =============================================================================
@@ -289,6 +327,15 @@ fn case_05_selective_from_mixed() {
     let diff = fixture.git_diff("gtk.nix");
     insta::assert_snapshot!("case_05_initial_diff", diff);
 
-    // TODO: Run git-stager stage gtk.nix:12
-    // Should stage only the cursor size line, not deletions or other additions
+    // Stage only line 12 (cursor size addition)
+    let stager = GitStager::new(fixture.path());
+    stager.stage("gtk.nix:12").unwrap();
+
+    // Verify staged diff (should have only cursor size line)
+    let staged = fixture.git_diff_cached("gtk.nix");
+    insta::assert_snapshot!("case_05_staged", staged);
+
+    // Verify remaining unstaged diff (should have deletions and other additions)
+    let remaining = fixture.git_diff("gtk.nix");
+    insta::assert_snapshot!("case_05_remaining", remaining);
 }
