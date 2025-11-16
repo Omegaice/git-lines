@@ -61,12 +61,21 @@ fn parse_file_refs(input: &str) -> Result<FileLineRefs, String> {
         return Err(format!("Invalid format '{}': expected 'file:refs'", input));
     }
 
-    let file = parts[0].to_string();
-    let refs_str = parts[1];
+    let file = parts[0].trim();
+    if file.is_empty() {
+        return Err(format!(
+            "Invalid format '{}': file name cannot be empty",
+            input
+        ));
+    }
 
+    let refs_str = parts[1];
     let refs = parse_line_refs(refs_str)?;
 
-    Ok(FileLineRefs { file, refs })
+    Ok(FileLineRefs {
+        file: file.to_string(),
+        refs,
+    })
 }
 
 /// Parse the line references part (after the colon)
@@ -669,6 +678,33 @@ mod tests {
     #[test]
     fn parse_empty_refs() {
         assert!(parse_file_refs("file.nix:").is_err());
+    }
+
+    #[test]
+    fn parse_empty_file_name() {
+        let result = parse_file_refs(":10");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("empty"));
+    }
+
+    #[test]
+    fn parse_empty_file_with_range() {
+        let result = parse_file_refs(":10..15");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("empty"));
+    }
+
+    #[test]
+    fn parse_whitespace_file_name() {
+        let result = parse_file_refs("  :10");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("empty"));
+    }
+
+    #[test]
+    fn parse_just_colon() {
+        let result = parse_file_refs(":");
+        assert!(result.is_err());
     }
 
     // =========================================================================
