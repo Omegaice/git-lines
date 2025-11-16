@@ -528,6 +528,76 @@ fn build_hunk_header(lines: &[DiffLine]) -> String {
     format!("@@ {} {} @@", old_part, new_part)
 }
 
+/// Format git diff output for human-readable display with explicit line numbers
+///
+/// Transforms raw git diff -U0 output into a format where each changed line
+/// is prefixed with its line number, making it easy to reference for staging.
+///
+/// Example output:
+/// ```text
+/// flake.nix:
+///   +137:       debug = true;
+///
+///   +142:         ./flake-modules/home-manager.nix
+/// ```
+pub fn format_diff_output(diff_output: &str) -> Result<String, String> {
+    if diff_output.trim().is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut result = String::new();
+    let mut lines_iter = diff_output.lines().peekable();
+    let mut current_old_line = 0u32;
+    let mut current_new_line = 0u32;
+    let mut first_hunk_in_file = true;
+    let mut in_header = true; // Track if we're still in diff header section
+
+    while let Some(line) = lines_iter.next() {
+        if line.starts_with("diff --git") {
+            // New file starting
+            first_hunk_in_file = true;
+            in_header = true;
+        } else if line.starts_with("--- a/") {
+            // Old file header - skip it
+            continue;
+        } else if line.starts_with("+++ b/") {
+            // Extract file name and print header
+            let current_file = &line[6..];
+            if !result.is_empty() {
+                result.push('\n'); // Blank line between files
+            }
+            result.push_str(current_file);
+            result.push_str(":\n");
+        } else if line.starts_with("@@ ") {
+            // Parse hunk header to get line numbers
+            let (old_start, new_start) = parse_hunk_header(line)?;
+            current_old_line = old_start;
+            current_new_line = new_start;
+            in_header = false;
+
+            // Add blank line between non-contiguous hunks (but not before first hunk)
+            if !first_hunk_in_file {
+                result.push('\n');
+            }
+            first_hunk_in_file = false;
+        } else if !in_header {
+            // Only process +/- lines after we've seen a hunk header
+            if let Some(content) = line.strip_prefix('+') {
+                // Addition line
+                result.push_str(&format!("  +{}:\t{}\n", current_new_line, content));
+                current_new_line += 1;
+            } else if let Some(content) = line.strip_prefix('-') {
+                // Deletion line
+                result.push_str(&format!("  -{}:\t{}\n", current_old_line, content));
+                current_old_line += 1;
+            }
+        }
+        // Ignore other lines (index lines, etc.)
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -921,5 +991,103 @@ index 2ce966d..93d8dbc 100644
 
         let result = build_patch("file.nix", &diff, &refs);
         assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // Diff formatting tests
+    // =========================================================================
+
+    #[test]
+    fn format_diff_single_addition() {
+        let diff = r#"diff --git a/flake.nix b/flake.nix
+index abc1234..def5678 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -136,0 +137 @@
++      debug = true;
+"#;
+        let formatted = format_diff_output(diff).unwrap();
+        insta::assert_snapshot!(formatted);
+    }
+
+    #[test]
+    fn format_diff_contiguous_additions() {
+        let diff = r#"diff --git a/flake.nix b/flake.nix
+index 462392e..0b97d01 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -38,0 +39,5 @@ line 38
++
++    stylix = {
++      url = "github:nix-community/stylix";
++      inputs.nixpkgs.follows = "nixpkgs";
++    };
+"#;
+        let formatted = format_diff_output(diff).unwrap();
+        insta::assert_snapshot!(formatted);
+    }
+
+    #[test]
+    fn format_diff_non_contiguous_hunks() {
+        let diff = r#"diff --git a/flake.nix b/flake.nix
+index abc1234..def5678 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -136,0 +137 @@
++      debug = true;
+@@ -140,0 +142 @@
++        ./flake-modules/home-manager.nix
+"#;
+        let formatted = format_diff_output(diff).unwrap();
+        insta::assert_snapshot!(formatted);
+    }
+
+    #[test]
+    fn format_diff_single_deletion() {
+        let diff = r#"diff --git a/zsh.nix b/zsh.nix
+index 6f2e06d..110fff0 100644
+--- a/zsh.nix
++++ b/zsh.nix
+@@ -15 +14,0 @@ line 14
+-      enableAutosuggestions = true;
+"#;
+        let formatted = format_diff_output(diff).unwrap();
+        insta::assert_snapshot!(formatted);
+    }
+
+    #[test]
+    fn format_diff_mixed_operations() {
+        let diff = r#"diff --git a/gtk.nix b/gtk.nix
+index 2ce966d..93d8dbc 100644
+--- a/gtk.nix
++++ b/gtk.nix
+@@ -10,2 +10,3 @@ line 9
+-    gtk.theme.name = "Adwaita";
+-    gtk.iconTheme.name = "Papirus";
++    # Theme managed by Stylix
++    gtk.iconTheme.name = "Papirus-Dark";
++    gtk.cursorTheme.size = 24;
+"#;
+        let formatted = format_diff_output(diff).unwrap();
+        insta::assert_snapshot!(formatted);
+    }
+
+    #[test]
+    fn format_diff_multiple_files() {
+        let diff = r#"diff --git a/flake.nix b/flake.nix
+index abc1234..def5678 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -136,0 +137 @@
++      debug = true;
+diff --git a/zsh.nix b/zsh.nix
+index 6f2e06d..110fff0 100644
+--- a/zsh.nix
++++ b/zsh.nix
+@@ -15 +14,0 @@ line 14
+-      enableAutosuggestions = true;
+"#;
+        let formatted = format_diff_output(diff).unwrap();
+        insta::assert_snapshot!(formatted);
     }
 }

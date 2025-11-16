@@ -1,0 +1,6 @@
+---
+source: src/lib.rs
+expression: formatted
+---
+flake.nix:
+  +137:	      debug = true;

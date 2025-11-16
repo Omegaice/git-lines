@@ -1,0 +1,8 @@
+---
+source: src/lib.rs
+expression: formatted
+---
+flake.nix:
+  +137:	      debug = true;
+
+  +142:	        ./flake-modules/home-manager.nix

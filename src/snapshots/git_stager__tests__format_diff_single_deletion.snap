@@ -1,0 +1,6 @@
+---
+source: src/lib.rs
+expression: formatted
+---
+zsh.nix:
+  -15:	      enableAutosuggestions = true;

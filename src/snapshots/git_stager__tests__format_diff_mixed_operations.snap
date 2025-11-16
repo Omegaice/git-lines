@@ -1,0 +1,10 @@
+---
+source: src/lib.rs
+expression: formatted
+---
+gtk.nix:
+  -10:	    gtk.theme.name = "Adwaita";
+  -11:	    gtk.iconTheme.name = "Papirus";
+  +10:	    # Theme managed by Stylix
+  +11:	    gtk.iconTheme.name = "Papirus-Dark";
+  +12:	    gtk.cursorTheme.size = 24;
