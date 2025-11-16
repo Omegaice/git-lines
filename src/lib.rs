@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// Main interface for git-stager operations
 pub struct GitStager {
@@ -142,12 +143,83 @@ fn parse_delete_number(input: &str) -> Result<u32, String> {
 
 /// Stage specific lines from a file
 /// This is the internal implementation
-fn stage_lines(_repo_path: &Path, _file_refs: &FileLineRefs) -> Result<(), String> {
-    // TODO: Implement actual staging
+fn stage_lines(repo_path: &Path, file_refs: &FileLineRefs) -> Result<(), String> {
     // 1. Get git diff for the file
+    let diff_output = get_git_diff(repo_path, &file_refs.file)?;
+
+    if diff_output.trim().is_empty() {
+        return Err(format!("No changes found in {}", file_refs.file));
+    }
+
     // 2. Parse diff to extract line changes
+    let diff = parse_diff(&diff_output)?;
+
     // 3. Construct patch with only selected lines
+    let patch = build_patch(&file_refs.file, &diff, &file_refs.refs)?;
+
     // 4. Apply patch via git apply --cached
+    apply_patch(repo_path, &patch)?;
+
+    Ok(())
+}
+
+/// Get git diff output for a specific file
+fn get_git_diff(repo_path: &Path, file: &str) -> Result<String, String> {
+    let output = Command::new("git")
+        .args([
+            "-C",
+            repo_path.to_str().unwrap_or("."),
+            "diff",
+            "--no-ext-diff",
+            "-U0",
+            "--no-color",
+            file,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run git diff: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git diff failed: {}", stderr));
+    }
+
+    String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8 in git diff output: {}", e))
+}
+
+/// Apply a patch to the git index
+fn apply_patch(repo_path: &Path, patch: &str) -> Result<(), String> {
+    let mut child = Command::new("git")
+        .args([
+            "-C",
+            repo_path.to_str().unwrap_or("."),
+            "apply",
+            "--cached",
+            "--unidiff-zero",
+            "-",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn git apply: {}", e))?;
+
+    // Write patch to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin
+            .write_all(patch.as_bytes())
+            .map_err(|e| format!("Failed to write patch to git apply: {}", e))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait for git apply: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git apply failed: {}", stderr));
+    }
+
     Ok(())
 }
 

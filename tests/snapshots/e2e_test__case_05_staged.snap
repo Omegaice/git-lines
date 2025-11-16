@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: staged
+---
+diff --git a/gtk.nix b/gtk.nix
+index 2ce966d..f85e60a 100644
+--- a/gtk.nix
++++ b/gtk.nix
+@@ -11,0 +12 @@ line 9
++    gtk.cursorTheme.size = 24;

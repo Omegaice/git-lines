@@ -1,6 +1,0 @@
----
-source: tests/e2e_test.rs
-assertion_line: 178
-expression: staged
----
-

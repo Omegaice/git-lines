@@ -1,0 +1,11 @@
+---
+source: tests/e2e_test.rs
+expression: staged
+---
+diff --git a/default.nix b/default.nix
+index a9d0261..dbd5dee 100644
+--- a/default.nix
++++ b/default.nix
+@@ -39,0 +40,2 @@
++        # Allow Stylix to override terminal font
++        "terminal.integrated.fontFamily" = lib.mkDefault "monospace";
