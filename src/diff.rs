@@ -1,3 +1,21 @@
+use error_set::error_set;
+
+error_set! {
+    /// Errors from parsing git diff output
+    DiffError := {
+        #[display("Empty diff")]
+        EmptyDiff,
+        #[display("Could not find file path in diff")]
+        MissingFilePath,
+        #[display("Invalid hunk header format")]
+        InvalidHunkHeader,
+        #[display("Invalid hunk header: {header}")]
+        MalformedHunkHeader { header: String },
+        #[display("Invalid line number in range: {range}")]
+        InvalidRangeNumber { range: String },
+    }
+}
+
 /// A single line change from a diff
 #[derive(Debug, Clone, PartialEq)]
 pub enum DiffLine {
@@ -15,9 +33,9 @@ pub struct FileDiff {
 }
 
 /// Parse a unified diff (git diff -U0 output) into structured data
-pub fn parse_diff(diff_output: &str) -> Result<FileDiff, String> {
+pub fn parse_diff(diff_output: &str) -> Result<FileDiff, DiffError> {
     if diff_output.is_empty() {
-        return Err("Empty diff".into());
+        return Err(DiffError::EmptyDiff);
     }
 
     let mut lines_iter = diff_output.lines();
@@ -33,7 +51,7 @@ pub fn parse_diff(diff_output: &str) -> Result<FileDiff, String> {
     }
 
     if file_path.is_empty() {
-        return Err("Could not find file path in diff".into());
+        return Err(DiffError::MissingFilePath);
     }
 
     // Parse hunks
@@ -70,18 +88,20 @@ pub fn parse_diff(diff_output: &str) -> Result<FileDiff, String> {
 
 /// Parse hunk header to extract old and new line numbers
 /// Format: @@ -old_start,old_count +new_start,new_count @@ optional context
-pub fn parse_hunk_header(header: &str) -> Result<(u32, u32), String> {
+pub fn parse_hunk_header(header: &str) -> Result<(u32, u32), DiffError> {
     // Find the @@ markers
     let header = header
         .strip_prefix("@@ ")
-        .ok_or("Invalid hunk header format")?;
-    let end_idx = header.find(" @@").ok_or("Invalid hunk header format")?;
+        .ok_or(DiffError::InvalidHunkHeader)?;
+    let end_idx = header.find(" @@").ok_or(DiffError::InvalidHunkHeader)?;
     let range_part = &header[..end_idx];
 
     // Split into old and new parts: "-old,count +new,count"
     let parts: Vec<&str> = range_part.split(' ').collect();
     if parts.len() != 2 {
-        return Err(format!("Invalid hunk header: {}", header));
+        return Err(DiffError::MalformedHunkHeader {
+            header: header.to_string(),
+        });
     }
 
     let old_part = parts[0];
@@ -94,7 +114,7 @@ pub fn parse_hunk_header(header: &str) -> Result<(u32, u32), String> {
 }
 
 /// Parse the start line number from a range like "136,0" or "137"
-fn parse_range_start(range: &str) -> Result<u32, String> {
+fn parse_range_start(range: &str) -> Result<u32, DiffError> {
     let num_str = if let Some(idx) = range.find(',') {
         &range[..idx]
     } else {
@@ -103,7 +123,9 @@ fn parse_range_start(range: &str) -> Result<u32, String> {
 
     num_str
         .parse::<u32>()
-        .map_err(|_| format!("Invalid line number in range: {}", range))
+        .map_err(|_| DiffError::InvalidRangeNumber {
+            range: range.to_string(),
+        })
 }
 
 /// Format git diff output for human-readable display with explicit line numbers
@@ -118,7 +140,7 @@ fn parse_range_start(range: &str) -> Result<u32, String> {
 ///
 ///   +142:         ./flake-modules/home-manager.nix
 /// ```
-pub fn format_diff_output(diff_output: &str) -> Result<String, String> {
+pub fn format_diff_output(diff_output: &str) -> Result<String, DiffError> {
     if diff_output.trim().is_empty() {
         return Ok(String::new());
     }

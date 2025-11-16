@@ -1,16 +1,27 @@
 use crate::diff::DiffLine;
 use crate::parse::LineRef;
+use error_set::error_set;
+
+error_set! {
+    /// Errors from patch construction
+    PatchError := {
+        #[display("No matching lines found for selection")]
+        NoMatchingLines,
+        #[display("No lines matched the selection criteria in the unstaged diff")]
+        NoLinesMatched,
+    }
+}
 
 /// Build a patch containing only the selected lines
 pub fn build_patch(
     file_path: &str,
     lines: &[DiffLine],
     refs: &[LineRef],
-) -> Result<String, String> {
+) -> Result<String, PatchError> {
     // Filter diff lines to only include selected ones
     let selected_lines = select_diff_lines(lines, refs)?;
     if selected_lines.is_empty() {
-        return Err("No matching lines found for selection".into());
+        return Err(PatchError::NoMatchingLines);
     }
 
     // Build the patch
@@ -48,7 +59,7 @@ pub fn build_patch(
 }
 
 /// Select only the diff lines that match the given references
-fn select_diff_lines(lines: &[DiffLine], refs: &[LineRef]) -> Result<Vec<DiffLine>, String> {
+fn select_diff_lines(lines: &[DiffLine], refs: &[LineRef]) -> Result<Vec<DiffLine>, PatchError> {
     let selected: Vec<_> = lines
         .iter()
         .filter(|line| line_matches_refs(line, refs))
@@ -56,7 +67,7 @@ fn select_diff_lines(lines: &[DiffLine], refs: &[LineRef]) -> Result<Vec<DiffLin
         .collect();
 
     if selected.is_empty() && !refs.is_empty() {
-        Err("No lines matched the selection criteria in the unstaged diff".into())
+        Err(PatchError::NoLinesMatched)
     } else {
         Ok(selected)
     }
