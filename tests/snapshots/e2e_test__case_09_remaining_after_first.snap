@@ -1,0 +1,14 @@
+---
+source: tests/e2e_test.rs
+expression: remaining_after_first
+---
+diff --git a/config.nix b/config.nix
+index 7c88260..41114ff 100644
+--- a/config.nix
++++ b/config.nix
+@@ -2,0 +3 @@ line 2
++# FIRST INSERTION
+@@ -9 +9,0 @@ line 8
+-line 9
+@@ -10,0 +11 @@ line 9
++line 9

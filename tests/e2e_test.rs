@@ -486,3 +486,101 @@ fn case_08_multiple_hunks_same_file() {
     let remaining = fixture.git_diff("flake.nix");
     insta::assert_snapshot!("case_08_remaining", remaining);
 }
+
+// =============================================================================
+// Case 9: Out-of-Order Sequential Staging (Later Hunk First)
+// =============================================================================
+
+#[test]
+fn case_09_out_of_order_sequential_staging() {
+    let fixture = Fixture::new();
+
+    // Create initial file with 10 lines
+    let initial_lines: Vec<String> = (1..=10).map(|i| format!("line {}", i)).collect();
+    let initial_content = initial_lines.join("\n") + "\n";
+    fixture.write_file("config.nix", &initial_content);
+    fixture.stage_file("config.nix");
+    fixture.commit("initial");
+
+    // Insert two lines at different positions
+    let mut modified_lines: Vec<String> = Vec::new();
+    for i in 1..=10 {
+        modified_lines.push(format!("line {}", i));
+        if i == 2 {
+            modified_lines.push("# FIRST INSERTION".to_string()); // becomes line 3
+        }
+        if i == 8 {
+            modified_lines.push("# SECOND INSERTION".to_string()); // becomes line 10
+        }
+    }
+    let modified_content = modified_lines.join("\n") + "\n";
+    fixture.write_file("config.nix", &modified_content);
+
+    let diff = fixture.git_diff("config.nix");
+    insta::assert_snapshot!("case_09_initial_diff", diff);
+
+    // Stage the LATER line first (line 10), then the EARLIER line (line 3)
+    let stager = GitStager::new(fixture.path_str());
+    stager.stage("config.nix:10").unwrap();
+
+    // Check intermediate state
+    let staged_after_first = fixture.git_diff_cached("config.nix");
+    insta::assert_snapshot!("case_09_staged_after_first", staged_after_first);
+
+    let remaining_after_first = fixture.git_diff("config.nix");
+    insta::assert_snapshot!("case_09_remaining_after_first", remaining_after_first);
+
+    // Now stage the earlier line
+    stager.stage("config.nix:3").unwrap();
+
+    // Final state: both insertions should be staged correctly
+    let staged_final = fixture.git_diff_cached("config.nix");
+    insta::assert_snapshot!("case_09_staged_final", staged_final);
+
+    let remaining_final = fixture.git_diff("config.nix");
+    insta::assert_snapshot!("case_09_remaining_final", remaining_final);
+}
+
+// =============================================================================
+// Case 10: Single Command vs Sequential (Comparison)
+// =============================================================================
+
+#[test]
+fn case_10_single_command_multiple_hunks() {
+    let fixture = Fixture::new();
+
+    // Same setup as case 9
+    let initial_lines: Vec<String> = (1..=10).map(|i| format!("line {}", i)).collect();
+    let initial_content = initial_lines.join("\n") + "\n";
+    fixture.write_file("config.nix", &initial_content);
+    fixture.stage_file("config.nix");
+    fixture.commit("initial");
+
+    // Insert two lines at different positions
+    let mut modified_lines: Vec<String> = Vec::new();
+    for i in 1..=10 {
+        modified_lines.push(format!("line {}", i));
+        if i == 2 {
+            modified_lines.push("# FIRST INSERTION".to_string()); // becomes line 3
+        }
+        if i == 8 {
+            modified_lines.push("# SECOND INSERTION".to_string()); // becomes line 10
+        }
+    }
+    let modified_content = modified_lines.join("\n") + "\n";
+    fixture.write_file("config.nix", &modified_content);
+
+    let diff = fixture.git_diff("config.nix");
+    insta::assert_snapshot!("case_10_initial_diff", diff);
+
+    // Stage BOTH lines in a single command (order in refs shouldn't matter)
+    let stager = GitStager::new(fixture.path_str());
+    stager.stage("config.nix:10,3").unwrap(); // Note: 10 before 3
+
+    // Both insertions should be staged correctly
+    let staged = fixture.git_diff_cached("config.nix");
+    insta::assert_snapshot!("case_10_staged", staged);
+
+    let remaining = fixture.git_diff("config.nix");
+    insta::assert_snapshot!("case_10_remaining", remaining);
+}

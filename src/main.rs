@@ -21,17 +21,19 @@ enum Commands {
     ///   N       addition (new line number)
     ///   N..M    range of additions
     ///   -N      deletion (old line number)
+    ///   -N..-M  range of deletions
     ///   ,       separator for multiple refs
     #[command(verbatim_doc_comment)]
     Stage {
-        /// Examples: flake.nix:137  config.nix:10..15  zsh.nix:-15  gtk.nix:12,-10
+        /// Examples: flake.nix:137  config.nix:10..15  zsh.nix:-15..-17  gtk.nix:12,-10
         file_refs: Vec<String>,
     },
-    /// Show diff with zero context (use to find line numbers for staging)
+    /// Show unstaged changes with line numbers for staging
     ///
-    /// Displays git diff output in the format that git-stager uses internally.
-    /// Line numbers shown in the hunk headers (e.g., @@ -10 +11 @@) are the
-    /// exact numbers to use with the 'stage' command.
+    /// Example: -10: old line
+    ///          +10: new line
+    ///          Stage both with: file.nix:-10,10
+    #[command(verbatim_doc_comment)]
     Diff {
         /// Files to show diff for (defaults to all changed files)
         files: Vec<String>,

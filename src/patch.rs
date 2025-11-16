@@ -352,4 +352,30 @@ mod tests {
         let result = build_patch("file.nix", &lines, &refs);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn build_patch_preserves_original_hunk_headers() {
+        // Parse an actual diff with multiple hunks
+        let diff = r#"diff --git a/config.nix b/config.nix
+index fa2da6e..41114ff 100644
+--- a/config.nix
++++ b/config.nix
+@@ -2,0 +3 @@ line 2
++# FIRST INSERTION
+@@ -8,0 +10 @@ line 8
++# SECOND INSERTION
+"#;
+        let parsed = crate::diff::parse_diff(diff).unwrap();
+
+        // Build a patch for just the second hunk (line 10)
+        let patch = build_patch("config.nix", &parsed.lines, &[LineRef::Add(10)]).unwrap();
+
+        // BUG: This generates @@ -9,0 +10 @@ but should be @@ -8,0 +10 @@
+        // The patch should preserve the original old_start (8), not compute it as new_line - 1 (9)
+        assert!(
+            patch.contains("@@ -8,0 +10 @@"),
+            "Patch should reference original line position.\nActual patch:\n{}",
+            patch
+        );
+    }
 }
