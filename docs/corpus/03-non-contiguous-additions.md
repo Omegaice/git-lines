@@ -1,4 +1,4 @@
-# Case 3: Non-Contiguous Additions
+# Case 3: Partial Selection from Single Hunk
 
 ## The Diff
 

@@ -1,0 +1,5 @@
+---
+source: tests/e2e_test.rs
+expression: gtk_remaining
+---
+
