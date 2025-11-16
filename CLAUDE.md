@@ -1,33 +1,44 @@
-## git-stager
+# CLAUDE.md
 
-A line-level staging tool for when you need to commit unrelated changes separately from the same file.
+## Tool Purpose
 
-**The problem:** When a file contains multiple unrelated changes (e.g., a bug fix on line 45 and a new feature on line 120), git groups them into hunks. `git add -p` can split hunks interactively, but you cannot use interactive commands.
+git-stager enables line-level staging when git's hunks are too coarse. It fills the gap left by `git add -p` which Claude cannot use interactively.
 
-**When to use git-stager:**
-- You have multiple logical changes in a single file that belong in separate commits
-- Git's hunks are too coarse-grained for your needs
+**Critical context**: This is a git companion tool, not a replacement. Claude uses git directly for everything else (staging whole files, committing, etc.). Only reach for git-stager when multiple unrelated changes exist in the same file and need separate commits.
 
-**When NOT to use it:**
-- Staging entire files → `git add file.rs`
-- Staging all changes → `git add .`
-- New/untracked files → `git add newfile.rs`
-- Discarding changes → `git restore file.rs`
+Typical workflow:
+1. `git-stager diff` to see available line numbers
+2. `git-stager stage file:N` to stage specific lines
+3. `git commit` as normal
 
-**Workflow:**
-```bash
-# 1. See what's available with line numbers
-git-stager diff src/lib.rs
+## Development Tooling
 
-# 2. Stage specific lines (numbers from step 1)
-git-stager stage src/lib.rs:45,46    # additions
-git-stager stage src/lib.rs:-30      # deletion
-git-stager stage src/lib.rs:10..15   # range
+- **Formatting**: Use `nix fmt`, NOT `cargo fmt` (treefmt-nix configured)
+- **Snapshot testing**: `cargo insta accept --all` to accept new snapshots
+- **Pre-commit**: treefmt hook runs automatically on commit
 
-# 3. Commit, then repeat for remaining changes
-git commit -m "fix: ..."
-git-stager stage src/lib.rs:120..125
-git commit -m "feat: ..."
+## Test Organization
+
+- `docs/corpus/` contains canonical test case documentation
+- E2E tests in `tests/e2e_test.rs` mirror corpus cases 1:1
+- Snapshot tests capture both diff parsing (unit) and git operations (e2e)
+
+When adding new functionality: document in corpus first, then implement test.
+
+## Known Gotchas
+
+### Line numbers shift after insertions
+When staging from multiple hunks, earlier insertions shift later line numbers:
 ```
+Insert after line 6 → line 137 becomes 138, line 142 becomes 143
+```
+The diff output shows correct numbers; just don't use stale numbers from before a partial stage.
 
-This is supplemental to git, not a replacement. Reach for standard git commands first.
+### Diff header lines look like deletions
+`--- a/file` starts with `-` but is not a deletion line. Must check for `--- a/` prefix before treating as deletion content. Same for `+++ b/` and additions.
+
+### Sandbox blocks heredocs in bash
+Can't use `cat <<'EOF'` for commit messages due to sandbox restrictions. Use simple `-m "message"` instead.
+
+### Empty string edge cases
+`:10` (empty filename) and `file:` (empty refs) should error. Whitespace-only filenames should also be rejected.
