@@ -394,7 +394,7 @@ fn select_diff_lines(lines: &[DiffLine], refs: &[LineRef]) -> Result<Vec<DiffLin
     }
 
     if selected.is_empty() && !refs.is_empty() {
-        return Err("No lines matched the selection criteria".to_string());
+        return Err("No lines matched the selection criteria in the unstaged diff".to_string());
     }
 
     Ok(selected)
