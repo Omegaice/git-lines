@@ -26,8 +26,8 @@ pub fn parse_diff(diff_output: &str) -> Result<FileDiff, String> {
 
     // Parse header to get file path
     for line in lines_iter.by_ref() {
-        if line.starts_with("+++ b/") {
-            file_path = line[6..].to_string();
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            file_path = path.to_string();
             break;
         }
     }
@@ -124,13 +124,13 @@ pub fn format_diff_output(diff_output: &str) -> Result<String, String> {
     }
 
     let mut result = String::new();
-    let mut lines_iter = diff_output.lines().peekable();
+    let lines_iter = diff_output.lines();
     let mut current_old_line = 0u32;
     let mut current_new_line = 0u32;
     let mut first_hunk_in_file = true;
     let mut in_header = true; // Track if we're still in diff header section
 
-    while let Some(line) = lines_iter.next() {
+    for line in lines_iter {
         if line.starts_with("diff --git") {
             // New file starting
             first_hunk_in_file = true;
@@ -138,9 +138,8 @@ pub fn format_diff_output(diff_output: &str) -> Result<String, String> {
         } else if line.starts_with("--- a/") {
             // Old file header - skip it
             continue;
-        } else if line.starts_with("+++ b/") {
+        } else if let Some(current_file) = line.strip_prefix("+++ b/") {
             // Extract file name and print header
-            let current_file = &line[6..];
             if !result.is_empty() {
                 result.push('\n'); // Blank line between files
             }
