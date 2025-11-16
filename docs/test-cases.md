@@ -1,179 +1,243 @@
-# Git Hunk Staging - Test Cases
+# Git Line-Level Staging - Test Cases
 
-## Structural Changes
+## Core Problem: No Non-Interactive Partial Staging
 
-### File Operations
-- File rename with content changes
-- File rename without content changes
-- File move to different directory
-- File copy detection
-- New file (untracked to staged)
-- Deleted file (tracked to removed)
-- File mode change only (e.g., adding executable permission)
-- File mode change combined with content changes
-- Symlink creation
-- Symlink modification
-- Symlink deletion
+Git provides **no way to programmatically stage partial file changes**. The available tools are:
 
-### Binary Files
-- Binary file modification
-- Binary file addition
-- Binary file deletion
-- Binary file that git incorrectly detects as text
-- Text file that git incorrectly detects as binary
-- Mixed binary and text changes in same commit
+- `git add <file>` - Stages entire file (too coarse)
+- `git add -p` - **Interactive only** (requires human input)
+- `git add -e` - **Interactive only** (opens editor)
+- `git apply --cached <patch>` - Non-interactive, but requires constructing a valid patch
 
-## Content Edge Cases
+**Claude's limitation:** Cannot respond to interactive prompts, cannot open editors, cannot use `git add -p`.
 
-### Hunk Dependencies
-- Overlapping context lines between adjacent hunks
-- Non-adjacent hunks in same file
-- Staging hunks out of order
-- Staging middle hunk without first hunk
-- Staging first and last hunk without middle
-- Very long file with many small hunks
-- Single line change creating minimal hunk
-- Entire file replacement (one large hunk)
+**This tool's purpose:** Provide a non-interactive interface to construct and apply partial patches, enabling Claude to stage specific lines programmatically.
 
-### Context Mismatches
-- Working tree modified after diff generation
-- File deleted after diff generation
-- File created after diff generation
-- Hunk context no longer matches due to external changes
-- Concurrent modification by another process
+---
 
-### Whitespace Issues
-- Whitespace-only changes
-- Trailing whitespace additions
-- Trailing whitespace removals
-- Mixed tabs and spaces
-- Line ending changes (LF to CRLF)
-- Line ending changes (CRLF to LF)
-- Mixed line endings in same file
-- No newline at end of file (addition)
-- No newline at end of file (removal)
-- Blank line additions
-- Blank line removals
+## Primary Use Cases (What Claude Can't Do Without This Tool)
 
-### Encoding and Character Sets
-- UTF-8 encoded files
-- UTF-16 encoded files
-- Latin-1 encoded files
-- Files with BOM (Byte Order Mark)
-- Multi-byte characters split across context boundary
-- Non-printable characters in content
-- Null bytes in text file
-- Very long lines (>10000 characters)
-- Files with mixed encodings
+### Single File with Multiple Changes
+Most common case - Claude made several changes to one file that should be separate commits:
 
-## Git-Specific Features
+- **Stage lines 10-15, ignore lines 20-25** - Select subset of changes
+- **Stage one import, not another** - Different features need different imports
+- **Stage function body change, not signature change** - Incremental refactoring
+- **Stage new feature, not the debug code** - Clean up before commit
 
-### Submodules
-- Submodule pointer update
-- Submodule addition
-- Submodule removal
-- Submodule with uncommitted changes
-- Nested submodules
+### Adjacent Line Changes
+Changes next to each other that belong to different logical commits:
 
-### Git LFS
-- LFS pointer file modification
-- LFS tracked file addition
-- LFS tracked file removal
-- Mixed LFS and regular files
+- **Two adjacent added lines, different features** - Line A adds feature X, line A+1 adds feature Y
+- **Two adjacent deleted lines, different features** - Removing two unrelated things in sequence
+- **Three or more adjacent additions** - Multiple features interleaved on consecutive lines
+- **Adjacent addition and deletion** - One line deleted, immediately followed by unrelated addition
+- **Modified line adjacent to unrelated change** - Line modified for feature X, next line added for feature Y
 
-### Git Attributes
-- Files with custom diff drivers
-- Files marked as binary in .gitattributes
-- Files with text=auto attribute
-- Files with specific encoding attributes
-- Files with merge strategies defined
+### Interleaved Semantic Changes
+Pattern: A, B, A, B where A and B are different features:
 
-### Repository State
-- Repository with merge in progress
-- Repository with rebase in progress
-- Repository with cherry-pick in progress
-- Repository in detached HEAD state
-- Bare repository (should fail gracefully)
-- Shallow clone
-- Sparse checkout
-- Worktree (linked working tree)
+- **Two features both touching same struct** - Field additions for different purposes
+- **Error handling mixed with feature code** - try/catch for feature X, logging for feature Y
+- **Documentation updates mixed with code changes** - Comment for X, code for Y, comment for Y
+- **Refactoring mixed with new functionality** - Rename in line N, new code in line N+1
+
+### Partial Modifications
+A "modification" is delete+add; sometimes only one part belongs to a commit:
+
+- **Rename within larger change** - Variable renamed (delete old, add new) but other changes unrelated
+- **Formatting fix adjacent to logic change** - Indentation corrected on same line as feature change
+- **Typo fix in modified line** - Original change plus typo correction should be separate commits
+
+---
+
+## Line Reference Scenarios
+
+### Addition-Only Cases
+- **Single line addition** - Stage one new line
+- **Range of added lines** - Stage lines 10-15
+- **Non-contiguous additions** - Stage lines 10, 15, 20 (skipping 11-14, 16-19)
+- **First line of file added** - Edge case for line numbering
+- **Last line of file added** - Edge case for patch construction
+- **Addition in middle of existing hunk** - Select subset of an existing Git hunk
+
+### Deletion-Only Cases
+- **Single line deletion** - Remove one line
+- **Range of deleted lines** - Remove lines 10-15
+- **Non-contiguous deletions** - Remove lines 10, 15, 20
+- **First line of file deleted** - Edge case
+- **Last line of file deleted** - Edge case
+- **All content deleted** - File becomes empty
+
+### Mixed Operations
+- **Stage addition, ignore adjacent deletion** - Within same Git hunk
+- **Stage deletion, ignore adjacent addition** - Within same Git hunk
+- **Multiple additions with one deletion between** - Select only the additions
+- **Alternating add/delete pattern** - Stage only the adds, or only the deletes
+
+---
+
+## Patch Construction Challenges
+
+### Line Number Accuracy
+- **Staged line numbers after unstaged additions** - Line numbers shift
+- **Staged line numbers after unstaged deletions** - Line numbers shift oppositely
+- **Multiple unstaged changes before staged line** - Cumulative offset calculation
+- **Staging affects subsequent line numbers** - Need to track as we stage
+
+### Context Requirements
+- **Zero context diff staging** - Use `--unidiff-zero` flag
+- **Minimal context needed for git apply** - How much context ensures success
+- **Context lines contain other changes** - Unstaged changes in context
+- **Context at file boundaries** - Not enough lines above/below for full context
+
+### Hunk Header Construction
+- **Single line addition** - `@@ -N,0 +N,1 @@`
+- **Single line deletion** - `@@ -N,1 +N,0 @@`
+- **Range of additions** - Calculate correct counts
+- **Non-contiguous selections** - Multiple hunks in constructed patch
+- **Empty old or new section** - Header format edge cases
+
+---
+
+## Edge Cases for Line-Level Operations
+
+### File State Transitions
+- **New file, partial content staging** - File doesn't exist in index yet
+- **Deleted file, partial restoration** - Remove some deletions, keep others
+- **Renamed file with modifications** - Both rename and content changes
+- **File mode change plus content** - Stage content only, not mode (or vice versa)
+
+### Whitespace Sensitivity
+- **Trailing whitespace on staged line** - Must preserve exactly
+- **Line ending differences** - CRLF vs LF on specific lines
+- **Tab vs space on staged line** - Exact character preservation
+- **Empty line addition** - Line with only newline
+- **Whitespace-only line modification** - Spaces changed to tabs
+
+### Special Content
+- **Line contains patch-like syntax** - `@@`, `+++`, `---` in actual code
+- **Line starts with +, -, or space** - Could confuse naive parsers
+- **Very long line (>10000 chars)** - Buffer handling
+- **Line with null bytes** - Binary content in "text" file
+- **Unicode combining characters** - Character boundary issues
+- **Line contains only special chars** - `{}[]();,` etc.
+
+---
 
 ## Error Conditions
 
-### File System Issues
-- Read-only file in working tree
-- File permissions prevent reading
-- File locked by another process
-- Disk full during staging operation
-- File path too long for OS
-- Special characters in file path
-- Unicode normalization differences in paths (macOS)
+### Invalid Input
+- **Line number out of range** - Beyond file length
+- **Line number references unchanged line** - Not a valid staging target
+- **Line number references context line** - Not an actual change
+- **Negative line number** - Invalid input
+- **Zero line number** - Lines are 1-indexed
+- **Non-numeric line reference** - Parse error
+- **Range with start > end** - `flake.nix:50-40`
+- **Overlapping ranges** - `flake.nix:10-20,15-25`
+- **Duplicate line references** - `flake.nix:10,10`
 
-### Repository Issues
-- Corrupted index file
-- Missing objects in object database
-- Invalid HEAD reference
-- No commits in repository (initial commit scenario)
-- Repository in inconsistent state
+### Git Apply Failures
+- **Patch doesn't apply cleanly** - Context mismatch
+- **File modified since diff** - Working tree changed
+- **Index already has changes** - Conflict with staged content
+- **Patch creates conflict markers** - Malformed patch
+- **Permission denied on index** - Lock file issues
 
-### Input Validation
-- Invalid hunk ID format
-- Non-existent hunk ID
-- Hunk ID for already staged changes
-- Duplicate hunk IDs in input
-- Empty hunk ID list
-- Malformed range syntax
-- File pattern matching no files
+### State Validation
+- **Line already staged** - Part of change already in index
+- **File not in diff** - No changes to stage
+- **Binary file** - Cannot do line-level staging
+- **Submodule** - Not regular file content
 
-## Performance Cases
+---
 
-### Scale Testing
-- Repository with 1000+ modified files
-- Single file with 100+ hunks
-- Very large file (>100MB) with changes
-- Many small files with single hunk each
-- Deep directory nesting (>50 levels)
-- Very large diff output (>10MB)
+## Integration with Git Workflow
 
-### Concurrency
-- Multiple git-stager processes on same repo
-- Git operations running concurrently
-- Index lock contention
-- Race conditions in hunk ID generation
+### Sequential Staging
+- **Stage line, verify, stage another line** - Multiple passes
+- **Stage line, unstage, re-stage** - Undo and redo
+- **Stage line, then stage adjacent line** - Building up commit
+- **Stage lines, realize mistake, reset** - Error recovery
 
-## Output Validation
+### Verification Steps
+- **`git diff --cached` shows only staged lines** - Correct staging
+- **`git diff` shows remaining unstaged lines** - Nothing lost
+- **Staged patch applies cleanly to HEAD** - Valid patch
+- **Line numbers in output match working tree** - Consistent reference
 
-### JSON Output
-- Valid JSON structure for empty results
-- Valid JSON structure for single hunk
-- Valid JSON structure for multiple hunks
-- Special characters properly escaped in JSON
-- Unicode properly encoded in JSON
-- Large numbers handled correctly
-- Nested file paths represented correctly
+### Commit Workflow
+- **Stage feature A lines, commit** - First commit
+- **Stage feature B lines, commit** - Second commit
+- **Verify both commits have correct content** - Clean separation
+- **History shows logical atomic commits** - Goal achieved
 
-### Human-Readable Output
-- Consistent formatting across different scenarios
-- Proper alignment of columns
-- Truncation of very long file paths
-- Color output disabled when not TTY
-- Progress indication for long operations
+---
 
-## Integration Scenarios
+## Real-World Scenarios (from nixpkgs example)
 
-### Workflow Tests
-- Stage single hunk from single file
-- Stage multiple hunks from single file
-- Stage hunks from multiple files
-- Stage all hunks from one file, partial from another
-- Unstage and re-stage same hunk
-- Stage hunk, modify file, stage another hunk
-- List hunks after partial staging
-- Verify staged changes match intended hunks
+### Config File Refactoring
+```nix
+# Single hunk contains:
+_module.args.local = {           # Structural refactor
+  yaziPlugins = ...              # Structural refactor
+  mkFHSSandboxExec = ...;        # NEW FEATURE
+};
+```
+**Test:** Stage only `mkFHSSandboxExec` line, or only structural refactor lines
 
-### Compatibility
-- Different git versions (2.20, 2.30, 2.40, latest)
-- Case-sensitive vs case-insensitive file systems
-- Different filesystem types (ext4, NTFS, APFS, etc.)
-- Git configured with different diff algorithms
-- Custom git configuration affecting diff output
+### Adjacent Feature Changes
+```nix
+style = "full";                  # Config improvement
+# Theme managed by Stylix        # Stylix feature
+```
+**Test:** Stage config improvement without Stylix comment
+
+### Unrelated Changes in Same Block
+```nix
+"terminal.integrated.fontFamily" = lib.mkDefault...  # Stylix
+"direnv.restart.automatic" = true;                   # Direnv (UNRELATED)
+```
+**Test:** Stage direnv config without Stylix changes
+
+### Flake Input Additions
+```nix
+debug = true;                              # Debug mode
+imports = [
+  ./flake-modules/home-manager.nix         # HM module
+```
+**Test:** Stage home-manager import, not debug flag (or vice versa)
+
+---
+
+## Performance Considerations
+
+### Scale
+- **File with 1000+ line changes** - Parse and select efficiently
+- **100+ lines selected for staging** - Patch construction performance
+- **Very large file (>1MB)** - Memory usage
+- **Deep directory path** - Path handling
+
+### Repeated Operations
+- **Stage 100 lines one at a time** - Shouldn't degrade
+- **List command called frequently** - Fast response
+- **Large diff parsed repeatedly** - Consider caching
+
+---
+
+## Output Validation (for list command)
+
+### JSON Format
+- **Empty changes** - Valid empty array
+- **Single line change** - Correct structure
+- **Multiple changes** - Array of objects
+- **Deletion representation** - How to show removed lines
+- **Line content escaping** - Special chars in JSON strings
+- **File path escaping** - Paths with spaces, quotes
+
+### Human Readable
+- **Clear line number display** - Easy to reference
+- **Change type indicator** - Add/delete/modify
+- **Content preview** - Enough to identify the line
+- **Grouped by contiguity** - Show natural groupings

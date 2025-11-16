@@ -150,6 +150,7 @@
                 rust-analyzer
                 cargo-watch
                 cargo-edit
+                cargo-insta
               ]
               ++ config.pre-commit.settings.enabledPackages;
           };
