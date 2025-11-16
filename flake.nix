@@ -52,7 +52,9 @@
             overlays = [ (import rust-overlay) ];
           };
 
-          rustToolchain = pkgs.rust-bin.stable.latest.default;
+          rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+            extensions = [ "rust-src" ];
+          };
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
           # Common source filtering for Rust projects
