@@ -28,6 +28,50 @@ impl GitStager {
         let parsed = parse_file_refs(file_ref)?;
         stage_lines(&self.repo_path, &parsed)
     }
+
+    /// Get formatted diff output for specified files (or all files if empty)
+    ///
+    /// Returns diff output formatted with explicit line numbers for easy staging.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use git_stager::GitStager;
+    /// let stager = GitStager::new(".");
+    /// let diff = stager.diff(&[]).unwrap(); // all files
+    /// let diff = stager.diff(&["flake.nix".to_string()]).unwrap(); // specific file
+    /// ```
+    pub fn diff(&self, files: &[String]) -> Result<String, String> {
+        let raw_diff = self.get_raw_diff(files)?;
+        format_diff_output(&raw_diff)
+    }
+
+    /// Get raw git diff output with zero context lines
+    fn get_raw_diff(&self, files: &[String]) -> Result<String, String> {
+        let mut args = vec![
+            "-C",
+            self.repo_path.to_str().unwrap_or("."),
+            "diff",
+            "--no-ext-diff",
+            "-U0",
+            "--no-color",
+        ];
+
+        let file_refs: Vec<&str> = files.iter().map(|s| s.as_str()).collect();
+        args.extend(file_refs);
+
+        let output = Command::new("git")
+            .args(&args)
+            .output()
+            .map_err(|e| format!("Failed to run git diff: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("git diff failed: {}", stderr));
+        }
+
+        String::from_utf8(output.stdout)
+            .map_err(|e| format!("Invalid UTF-8 in git diff output: {}", e))
+    }
 }
 
 /// A reference to specific lines to stage
