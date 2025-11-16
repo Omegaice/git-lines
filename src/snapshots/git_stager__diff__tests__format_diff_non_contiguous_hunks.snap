@@ -1,5 +1,5 @@
 ---
-source: src/lib.rs
+source: src/diff.rs
 expression: formatted
 ---
 flake.nix:

@@ -1,6 +1,9 @@
 ---
-source: src/lib.rs
+source: src/diff.rs
 expression: formatted
 ---
+flake.nix:
+  +137:	      debug = true;
+
 zsh.nix:
   -15:	      enableAutosuggestions = true;
