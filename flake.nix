@@ -58,7 +58,15 @@
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
           # Common source filtering for Rust projects
-          src = craneLib.cleanCargoSource ./.;
+          # Include both Cargo sources and insta snapshot files
+          unfilteredRoot = ./.;
+          src = pkgs.lib.fileset.toSource {
+            root = unfilteredRoot;
+            fileset = pkgs.lib.fileset.unions [
+              (craneLib.fileset.commonCargoSources unfilteredRoot)
+              (pkgs.lib.fileset.fileFilter (file: file.hasExt "snap") unfilteredRoot)
+            ];
+          };
 
           # Common build inputs
           commonArgs = {
@@ -67,6 +75,7 @@
 
             nativeBuildInputs = with pkgs; [
               pkg-config
+              git # Required for e2e tests
             ];
 
             buildInputs =

@@ -414,7 +414,7 @@ fn case_07_deletion_range() {
 
     // Delete lines 15-17
     let modified_lines: Vec<String> = (1..=20)
-        .filter(|&i| i < 15 || i > 17)
+        .filter(|&i| !(15..=17).contains(&i))
         .map(|i| format!("line {}", i))
         .collect();
     let modified_content = modified_lines.join("\n") + "\n";
