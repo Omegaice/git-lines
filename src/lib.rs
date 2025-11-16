@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::process::Command;
 
 mod diff;
@@ -8,16 +7,14 @@ mod patch;
 pub use diff::format_diff_output;
 
 /// Main interface for git-stager operations
-pub struct GitStager {
-    repo_path: PathBuf,
+pub struct GitStager<'a> {
+    repo_path: &'a str,
 }
 
-impl GitStager {
+impl<'a> GitStager<'a> {
     /// Create a new GitStager for the given repository path
-    pub fn new(repo_path: impl Into<PathBuf>) -> Self {
-        Self {
-            repo_path: repo_path.into(),
-        }
+    pub fn new(repo_path: &'a str) -> Self {
+        Self { repo_path }
     }
 
     /// Stage specific lines from a file
@@ -31,8 +28,7 @@ impl GitStager {
     /// stager.stage("config.nix:-10,-11,12").unwrap();
     /// ```
     pub fn stage(&self, file_ref: &str) -> Result<(), String> {
-        let parsed = parse::parse_file_refs(file_ref)?;
-        self.stage_lines(&parsed)
+        self.stage_lines(&parse::parse_file_refs(file_ref)?)
     }
 
     /// Get formatted diff output for specified files (or all files if empty)
@@ -54,7 +50,7 @@ impl GitStager {
     fn get_raw_diff(&self, files: &[String]) -> Result<String, String> {
         let mut args = vec![
             "-C",
-            self.repo_path.to_str().unwrap_or("."),
+            &self.repo_path,
             "diff",
             "--no-ext-diff",
             "-U0",
@@ -79,7 +75,7 @@ impl GitStager {
 
     /// Stage specific lines from a file
     fn stage_lines(&self, file_refs: &parse::FileLineRefs) -> Result<(), String> {
-        let diff_output = self.get_git_diff_for_file(&file_refs.file)?;
+        let diff_output = self.get_raw_diff(std::slice::from_ref(&file_refs.file))?;
 
         if diff_output.trim().is_empty() {
             return Err(format!("No changes found in {}", file_refs.file));
@@ -89,41 +85,17 @@ impl GitStager {
             &file_refs.file,
             &diff::parse_diff(&diff_output)?.lines,
             &file_refs.refs,
-        )?)?;
-
-        Ok(())
-    }
-
-    /// Get git diff output for a specific file
-    fn get_git_diff_for_file(&self, file: &str) -> Result<String, String> {
-        let output = Command::new("git")
-            .args([
-                "-C",
-                self.repo_path.to_str().unwrap_or("."),
-                "diff",
-                "--no-ext-diff",
-                "-U0",
-                "--no-color",
-                file,
-            ])
-            .output()
-            .map_err(|e| format!("Failed to run git diff: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("git diff failed: {}", stderr));
-        }
-
-        String::from_utf8(output.stdout)
-            .map_err(|e| format!("Invalid UTF-8 in git diff output: {}", e))
+        )?)
     }
 
     /// Apply a patch to the git index
     fn apply_patch(&self, patch: &str) -> Result<(), String> {
+        use std::io::Write;
+
         let mut child = Command::new("git")
             .args([
                 "-C",
-                self.repo_path.to_str().unwrap_or("."),
+                self.repo_path,
                 "apply",
                 "--cached",
                 "--unidiff-zero",
@@ -135,13 +107,12 @@ impl GitStager {
             .spawn()
             .map_err(|e| format!("Failed to spawn git apply: {}", e))?;
 
-        // Write patch to stdin
-        if let Some(mut stdin) = child.stdin.take() {
-            use std::io::Write;
-            stdin
-                .write_all(patch.as_bytes())
-                .map_err(|e| format!("Failed to write patch to git apply: {}", e))?;
-        }
+        child
+            .stdin
+            .take()
+            .ok_or("Failed to get stdin handle for git apply")?
+            .write_all(patch.as_bytes())
+            .map_err(|e| format!("Failed to write patch to git apply: {}", e))?;
 
         let output = child
             .wait_with_output()

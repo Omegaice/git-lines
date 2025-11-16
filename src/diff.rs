@@ -17,10 +17,10 @@ pub struct FileDiff {
 /// Parse a unified diff (git diff -U0 output) into structured data
 pub fn parse_diff(diff_output: &str) -> Result<FileDiff, String> {
     if diff_output.is_empty() {
-        return Err("Empty diff".to_string());
+        return Err("Empty diff".into());
     }
 
-    let mut lines_iter = diff_output.lines().peekable();
+    let mut lines_iter = diff_output.lines();
     let mut file_path = String::new();
     let mut diff_lines = Vec::new();
 
@@ -33,7 +33,7 @@ pub fn parse_diff(diff_output: &str) -> Result<FileDiff, String> {
     }
 
     if file_path.is_empty() {
-        return Err("Could not find file path in diff".to_string());
+        return Err("Could not find file path in diff".into());
     }
 
     // Parse hunks

@@ -1,8 +1,6 @@
 use git_stager::GitStager;
 use git2::{Repository, Signature};
-use std::fs;
-use std::path::Path;
-use std::process::Command;
+use std::{fs, path::Path, process::Command};
 use tempfile::TempDir;
 
 /// Test fixture for a git repository
@@ -27,6 +25,10 @@ impl Fixture {
 
     fn path(&self) -> &Path {
         self.dir.path()
+    }
+
+    fn path_str(&self) -> &str {
+        self.dir.path().to_str().unwrap()
     }
 
     /// Write a file to the repo
@@ -129,7 +131,7 @@ fn case_01_single_addition() {
     insta::assert_snapshot!("case_01_initial_diff", diff);
 
     // Stage line 137
-    let stager = GitStager::new(fixture.path());
+    let stager = GitStager::new(fixture.path_str());
     stager.stage("flake.nix:137").unwrap();
 
     // Verify staged diff
@@ -170,7 +172,7 @@ fn case_02_contiguous_additions() {
     insta::assert_snapshot!("case_02_initial_diff", diff);
 
     // Stage lines 39-43 (the full range)
-    let stager = GitStager::new(fixture.path());
+    let stager = GitStager::new(fixture.path_str());
     stager.stage("flake.nix:39..43").unwrap();
 
     // Verify staged diff
@@ -211,7 +213,7 @@ fn case_03_non_contiguous_additions() {
     insta::assert_snapshot!("case_03_initial_diff", diff);
 
     // Stage lines 40-41 only (skip line 42)
-    let stager = GitStager::new(fixture.path());
+    let stager = GitStager::new(fixture.path_str());
     stager.stage("default.nix:40..41").unwrap();
 
     // Verify staged diff (should have lines 40-41)
@@ -264,7 +266,7 @@ fn case_04_deletion() {
     insta::assert_snapshot!("case_04_initial_diff", diff);
 
     // Stage deletion of line 15
-    let stager = GitStager::new(fixture.path());
+    let stager = GitStager::new(fixture.path_str());
     stager.stage("zsh.nix:-15").unwrap();
 
     // Verify staged diff
@@ -328,7 +330,7 @@ fn case_05_selective_from_mixed() {
     insta::assert_snapshot!("case_05_initial_diff", diff);
 
     // Stage only line 12 (cursor size addition)
-    let stager = GitStager::new(fixture.path());
+    let stager = GitStager::new(fixture.path_str());
     stager.stage("gtk.nix:12").unwrap();
 
     // Verify staged diff (should have only cursor size line)
@@ -369,7 +371,7 @@ fn case_06_multiple_files() {
     fixture.write_file("gtk.nix", &gtk_modified);
 
     // Stage both files in one command
-    let stager = GitStager::new(fixture.path());
+    let stager = GitStager::new(fixture.path_str());
     stager.stage("flake.nix:137").unwrap();
     stager.stage("gtk.nix:12").unwrap();
 
@@ -422,7 +424,7 @@ fn case_07_deletion_range() {
     insta::assert_snapshot!("case_07_initial_diff", diff);
 
     // Stage deletion range
-    let stager = GitStager::new(fixture.path());
+    let stager = GitStager::new(fixture.path_str());
     stager.stage("zsh.nix:-15..-17").unwrap();
 
     // Verify staged diff
@@ -473,7 +475,7 @@ fn case_08_multiple_hunks_same_file() {
 
     // Stage lines 7 and 143 (skip line 138)
     // Note: line numbers shift because insertions affect subsequent lines
-    let stager = GitStager::new(fixture.path());
+    let stager = GitStager::new(fixture.path_str());
     stager.stage("flake.nix:7,143").unwrap();
 
     // Verify staged diff (should have lines 7 and 143)

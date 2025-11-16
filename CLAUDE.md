@@ -11,6 +11,10 @@ Typical workflow:
 2. `git-stager stage file:N` to stage specific lines
 3. `git commit` as normal
 
+## Architecture Principle
+
+CLI (`main.rs`) is a thin wrapper around `GitStager`. All git interaction and core logic lives in the library for testability. CLI only handles argument parsing and output display.
+
 ## Development Tooling
 
 - **Formatting**: Use `nix fmt`, NOT `cargo fmt` (treefmt-nix configured)
@@ -36,9 +40,3 @@ The diff output shows correct numbers; just don't use stale numbers from before 
 
 ### Diff header lines look like deletions
 `--- a/file` starts with `-` but is not a deletion line. Must check for `--- a/` prefix before treating as deletion content. Same for `+++ b/` and additions.
-
-### Sandbox blocks heredocs in bash
-Can't use `cat <<'EOF'` for commit messages due to sandbox restrictions. Use simple `-m "message"` instead.
-
-### Empty string edge cases
-`:10` (empty filename) and `file:` (empty refs) should error. Whitespace-only filenames should also be rejected.

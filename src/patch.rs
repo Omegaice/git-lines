@@ -9,9 +9,8 @@ pub fn build_patch(
 ) -> Result<String, String> {
     // Filter diff lines to only include selected ones
     let selected_lines = select_diff_lines(lines, refs)?;
-
     if selected_lines.is_empty() {
-        return Err("No matching lines found for selection".to_string());
+        return Err("No matching lines found for selection".into());
     }
 
     // Build the patch
@@ -50,49 +49,32 @@ pub fn build_patch(
 
 /// Select only the diff lines that match the given references
 fn select_diff_lines(lines: &[DiffLine], refs: &[LineRef]) -> Result<Vec<DiffLine>, String> {
-    let mut selected = Vec::new();
-
-    for line in lines {
-        if line_matches_refs(line, refs) {
-            selected.push(line.clone());
-        }
-    }
+    let selected: Vec<_> = lines
+        .iter()
+        .filter(|line| line_matches_refs(line, refs))
+        .cloned()
+        .collect();
 
     if selected.is_empty() && !refs.is_empty() {
-        return Err("No lines matched the selection criteria in the unstaged diff".to_string());
+        Err("No lines matched the selection criteria in the unstaged diff".into())
+    } else {
+        Ok(selected)
     }
-
-    Ok(selected)
 }
 
 /// Check if a diff line matches any of the given references
 fn line_matches_refs(line: &DiffLine, refs: &[LineRef]) -> bool {
-    for ref_item in refs {
-        match (line, ref_item) {
-            (DiffLine::Add { new_line, .. }, LineRef::Add(n)) => {
-                if new_line == n {
-                    return true;
-                }
-            }
-            (DiffLine::Add { new_line, .. }, LineRef::AddRange(start, end)) => {
-                if new_line >= start && new_line <= end {
-                    return true;
-                }
-            }
-            (DiffLine::Delete { old_line, .. }, LineRef::Delete(n)) => {
-                if old_line == n {
-                    return true;
-                }
-            }
-            (DiffLine::Delete { old_line, .. }, LineRef::DeleteRange(start, end)) => {
-                if old_line >= start && old_line <= end {
-                    return true;
-                }
-            }
-            _ => {}
+    refs.iter().any(|ref_item| match (line, ref_item) {
+        (DiffLine::Add { new_line, .. }, LineRef::Add(n)) => new_line == n,
+        (DiffLine::Add { new_line, .. }, LineRef::AddRange(start, end)) => {
+            new_line >= start && new_line <= end
         }
-    }
-    false
+        (DiffLine::Delete { old_line, .. }, LineRef::Delete(n)) => old_line == n,
+        (DiffLine::Delete { old_line, .. }, LineRef::DeleteRange(start, end)) => {
+            old_line >= start && old_line <= end
+        }
+        _ => false,
+    })
 }
 
 /// Group diff lines into contiguous hunks
@@ -151,9 +133,10 @@ fn group_into_hunks(lines: &[DiffLine]) -> Vec<Vec<DiffLine>> {
 
 /// Build the hunk header for a set of contiguous lines
 fn build_hunk_header(lines: &[DiffLine]) -> String {
-    if lines.is_empty() {
-        return "@@ -0,0 +0,0 @@".to_string();
-    }
+    debug_assert!(
+        !lines.is_empty(),
+        "build_hunk_header called with empty lines"
+    );
 
     let mut old_start = 0u32;
     let mut old_count = 0u32;

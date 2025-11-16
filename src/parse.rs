@@ -46,51 +46,41 @@ pub fn parse_file_refs(input: &str) -> Result<FileLineRefs, String> {
 /// Parse the line references part (after the colon)
 /// Examples: "137", "10..15", "10,15,-20"
 fn parse_line_refs(input: &str) -> Result<Vec<LineRef>, String> {
-    let mut refs = Vec::new();
-
-    for part in input.split(',') {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-
-        refs.push(parse_single_ref(part)?);
-    }
-
-    if refs.is_empty() {
-        return Err("No line references provided".to_string());
-    }
-
-    Ok(refs)
+    input
+        .split(',')
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+        .map(parse_single_ref)
+        .collect::<Result<Vec<_>, _>>()
+        .and_then(|r| {
+            if r.is_empty() {
+                Err("No line references provided".into())
+            } else {
+                Ok(r)
+            }
+        })
 }
 
 /// Parse a single line reference (could be single number, range, or deletion)
 fn parse_single_ref(input: &str) -> Result<LineRef, String> {
     // Check for range syntax (N..M or -N..-M)
-    if let Some(idx) = input.find("..") {
-        let start_str = &input[..idx];
-        let end_str = &input[idx + 2..];
-
+    if let Some((start_str, end_str)) = input.split_once("..") {
         // Determine if it's a deletion range
-        let is_delete = start_str.starts_with('-');
-
-        if is_delete {
-            let start = parse_delete_number(start_str)?;
-            let end = parse_delete_number(end_str)?;
-            Ok(LineRef::DeleteRange(start, end))
+        if start_str.starts_with('-') {
+            Ok(LineRef::DeleteRange(
+                parse_delete_number(start_str)?,
+                parse_delete_number(end_str)?,
+            ))
         } else {
-            let start = parse_add_number(start_str)?;
-            let end = parse_add_number(end_str)?;
-            Ok(LineRef::AddRange(start, end))
+            Ok(LineRef::AddRange(
+                parse_add_number(start_str)?,
+                parse_add_number(end_str)?,
+            ))
         }
     } else if input.starts_with('-') {
-        // Single deletion
-        let num = parse_delete_number(input)?;
-        Ok(LineRef::Delete(num))
+        Ok(LineRef::Delete(parse_delete_number(input)?))
     } else {
-        // Single addition
-        let num = parse_add_number(input)?;
-        Ok(LineRef::Add(num))
+        Ok(LineRef::Add(parse_add_number(input)?))
     }
 }
 
