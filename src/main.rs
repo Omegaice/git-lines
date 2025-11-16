@@ -5,6 +5,10 @@ use git_stager::GitStager;
 #[command(name = "git-stager")]
 #[command(about = "Non-interactive line-level git staging tool")]
 struct Cli {
+    /// Run as if git-stager was started in <path> instead of the current working directory
+    #[arg(short = 'C', global = true)]
+    path: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -36,7 +40,8 @@ enum Commands {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    let stager = GitStager::new(".");
+    let repo_path = cli.path.as_deref().unwrap_or(".");
+    let stager = GitStager::new(repo_path);
 
     match cli.command {
         Commands::Stage { file_refs } => {
