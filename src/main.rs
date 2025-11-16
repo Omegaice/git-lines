@@ -1,10 +1,8 @@
 use clap::{Parser, Subcommand};
-use git2::Repository;
-use git_stager::list_hunks;
 
 #[derive(Parser)]
 #[command(name = "git-stager")]
-#[command(about = "Non-interactive git hunk staging tool")]
+#[command(about = "Non-interactive line-level git staging tool")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -12,49 +10,19 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// List all unstaged hunks
-    List {
-        /// Output in JSON format
-        #[arg(long)]
-        json: bool,
-    },
-    /// Stage specific hunks by ID
+    /// Stage specific lines by reference (e.g., file.nix:10..15,-20)
     Stage {
-        /// Hunk IDs to stage
-        hunk_ids: Vec<String>,
+        /// File and line references (e.g., "flake.nix:137" or "flake.nix:10..15")
+        file_refs: Vec<String>,
     },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    let repo = Repository::discover(".")?;
-    eprintln!("Found repository at: {:?}", repo.path());
-
     match cli.command {
-        Commands::List { json } => {
-            let hunks = list_hunks(&repo)?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&hunks)?);
-            } else {
-                for hunk in &hunks {
-                    println!(
-                        "[{}] {} lines {}-{} (+{}/-{})",
-                        hunk.id,
-                        hunk.file,
-                        hunk.old_start,
-                        hunk.old_start + hunk.lines_removed,
-                        hunk.lines_added,
-                        hunk.lines_removed
-                    );
-                }
-                if hunks.is_empty() {
-                    println!("No unstaged hunks found.");
-                }
-            }
-        }
-        Commands::Stage { hunk_ids } => {
-            eprintln!("Staging hunks: {:?}", hunk_ids);
+        Commands::Stage { file_refs } => {
+            eprintln!("Staging: {:?}", file_refs);
             eprintln!("(Not yet implemented)");
         }
     }

@@ -6,3 +6,12 @@ description = "Non-interactive git hunk staging tool"
 license = "MIT"
 
 [dependencies]
+clap = { version = "4.5.51", features = ["derive"] }
+git2 = "0.20.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.17"
+
+[dev-dependencies]
+insta = { version = "1.43.2", features = ["json"] }
+tempfile = "3.23.0"
