@@ -47,8 +47,7 @@ impl GitStager {
     /// let diff = stager.diff(&["flake.nix".to_string()]).unwrap(); // specific file
     /// ```
     pub fn diff(&self, files: &[String]) -> Result<String, String> {
-        let raw_diff = self.get_raw_diff(files)?;
-        diff::format_diff_output(&raw_diff)
+        diff::format_diff_output(&self.get_raw_diff(files)?)
     }
 
     /// Get raw git diff output with zero context lines
@@ -62,8 +61,7 @@ impl GitStager {
             "--no-color",
         ];
 
-        let file_refs: Vec<&str> = files.iter().map(|s| s.as_str()).collect();
-        args.extend(file_refs);
+        args.extend(files.iter().map(|s| s.as_str()));
 
         let output = Command::new("git")
             .args(&args)
@@ -81,22 +79,17 @@ impl GitStager {
 
     /// Stage specific lines from a file
     fn stage_lines(&self, file_refs: &parse::FileLineRefs) -> Result<(), String> {
-        // 1. Get git diff for the file
         let diff_output = self.get_git_diff_for_file(&file_refs.file)?;
 
         if diff_output.trim().is_empty() {
             return Err(format!("No changes found in {}", file_refs.file));
         }
 
-        // 2. Parse diff to extract line changes
-        let parsed_diff = diff::parse_diff(&diff_output)?;
-
-        // 3. Construct patch with only selected lines
-        let patch_content =
-            patch::build_patch(&file_refs.file, &parsed_diff.lines, &file_refs.refs)?;
-
-        // 4. Apply patch via git apply --cached
-        self.apply_patch(&patch_content)?;
+        self.apply_patch(&patch::build_patch(
+            &file_refs.file,
+            &diff::parse_diff(&diff_output)?.lines,
+            &file_refs.refs,
+        )?)?;
 
         Ok(())
     }

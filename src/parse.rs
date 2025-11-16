@@ -37,12 +37,9 @@ pub fn parse_file_refs(input: &str) -> Result<FileLineRefs, String> {
         ));
     }
 
-    let refs_str = parts[1];
-    let refs = parse_line_refs(refs_str)?;
-
     Ok(FileLineRefs {
         file: file.to_string(),
-        refs,
+        refs: parse_line_refs(parts[1])?,
     })
 }
 
@@ -57,8 +54,7 @@ fn parse_line_refs(input: &str) -> Result<Vec<LineRef>, String> {
             continue;
         }
 
-        let line_ref = parse_single_ref(part)?;
-        refs.push(line_ref);
+        refs.push(parse_single_ref(part)?);
     }
 
     if refs.is_empty() {
