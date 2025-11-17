@@ -3,7 +3,14 @@ use git_stager::GitStager;
 
 #[derive(Parser)]
 #[command(name = "git-stager")]
+#[command(version)]
 #[command(about = "Non-interactive line-level git staging tool")]
+#[command(long_about = concat!(
+    "Non-interactive line-level git staging tool\n\n",
+    "Stage specific lines from git diffs when hunks are too coarse.\n",
+    "Use 'git-stager diff' to see line numbers, then 'git-stager stage' to select lines.\n\n",
+    "Repository: ", env!("CARGO_PKG_REPOSITORY")
+))]
 struct Cli {
     /// Run as if git-stager was started in <path> instead of the current working directory
     #[arg(short = 'C', global = true)]
