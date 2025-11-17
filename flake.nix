@@ -162,6 +162,8 @@
                 cargo-watch
                 cargo-edit
                 cargo-insta
+
+                git-cliff # Changelog generation
               ]
               ++ config.pre-commit.settings.enabledPackages;
           };
