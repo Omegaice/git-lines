@@ -1,5 +1,7 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
 use git_stager::GitStager;
+use std::io;
 
 #[derive(Parser)]
 #[command(name = "git-stager")]
@@ -70,15 +72,40 @@ enum Commands {
         /// Files to show diff for (defaults to all changed files)
         files: Vec<String>,
     },
+    /// Generate shell completion scripts
+    ///
+    /// Install completions for your shell:
+    ///
+    /// Bash:
+    ///   git-stager completions bash > ~/.local/share/bash-completion/completions/git-stager
+    ///
+    /// Zsh:
+    ///   git-stager completions zsh > ~/.zfunc/_git-stager
+    ///   (and add ~/.zfunc to your $fpath in .zshrc)
+    ///
+    /// Fish:
+    ///   git-stager completions fish > ~/.config/fish/completions/git-stager.fish
+    ///
+    /// PowerShell:
+    ///   git-stager completions powershell > git-stager.ps1
+    #[command(verbatim_doc_comment)]
+    Completions {
+        /// The shell to generate completions for
+        shell: Shell,
+    },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    let repo_path = cli.path.as_deref().unwrap_or(".");
-    let stager = GitStager::new(repo_path);
 
     match cli.command {
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "git-stager", &mut io::stdout());
+        }
         Commands::Stage { file_refs } => {
+            let repo_path = cli.path.as_deref().unwrap_or(".");
+            let stager = GitStager::new(repo_path);
             for file_ref in &file_refs {
                 stager
                     .stage(file_ref)
@@ -86,6 +113,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Diff { files } => {
+            let repo_path = cli.path.as_deref().unwrap_or(".");
+            let stager = GitStager::new(repo_path);
             let output = stager
                 .diff(&files)
                 .map_err(|e| format!("Failed to get diff: {}", e))?;
