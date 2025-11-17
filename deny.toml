@@ -1,0 +1,27 @@
+# cargo-deny configuration
+# See: https://embarkstudios.github.io/cargo-deny/
+
+[licenses]
+# Allow these permissive open source licenses
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Unlicense",
+    "Unicode-3.0",
+]
+# Specify how to handle license expressions
+confidence-threshold = 0.8
+
+[bans]
+# Warn about multiple versions of the same crate (avoid bloat)
+multiple-versions = "warn"
+# Allow common exceptions (build tools, proc-macros)
+skip = []
+skip-tree = []
+
+[sources]
+# Only allow crates from crates.io
+unknown-registry = "deny"
+unknown-git = "deny"
+# Allow git dependencies from specific repos if needed
+allow-git = []

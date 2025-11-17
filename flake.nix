@@ -17,6 +17,10 @@
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    advisory-db = {
+      url = "github:rustsec/advisory-db";
+      flake = false;
+    };
   };
 
   outputs =
@@ -139,6 +143,25 @@
 
             # Code coverage
             git-stager-coverage = craneLib.cargoTarpaulin (
+              commonArgs
+              // {
+                inherit cargoArtifacts;
+              }
+            );
+
+            # Security audit
+            git-stager-audit = craneLib.cargoAudit (
+              commonArgs
+              // {
+                advisory-db = inputs.advisory-db;
+              }
+            );
+
+            # Dependency policy check (licenses, banned crates, sources)
+            git-stager-deny = craneLib.cargoDeny (commonArgs // { });
+
+            # Generate documentation
+            git-stager-doc = craneLib.cargoDoc (
               commonArgs
               // {
                 inherit cargoArtifacts;
