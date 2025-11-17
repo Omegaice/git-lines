@@ -15,24 +15,49 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Stage specific lines (additions or deletions) from unstaged changes
+    /// Stage specific lines from unstaged changes
     ///
-    /// Syntax: FILE:REFS where REFS uses:
-    ///   N       addition (new line number)
-    ///   N..M    range of additions
-    ///   -N      deletion (old line number)
-    ///   -N..-M  range of deletions
-    ///   ,       separator for multiple refs
+    /// Select individual changed lines to stage, even from within contiguous
+    /// changes. Line numbers come from `git-stager diff` output.
+    ///
+    /// Syntax: FILE:REFS
+    ///   N         stage addition at new line N
+    ///   -N        stage deletion of old line N
+    ///   N..M      stage range of additions
+    ///   -N..-M    stage range of deletions
+    ///   A,B,C     combine any of the above
+    ///
+    /// Basic:
+    ///   file:137           single added line
+    ///   file:-15           single deleted line
+    ///   file:10..15        range of additions
+    ///
+    /// Advanced - skip lines within contiguous changes:
+    ///   file:40..45,48     lines 40-45 and 48, skip 46-47
+    ///   file:10,15,20      only specific lines, not 11-14 or 16-19
+    ///   file:-10..-12,-15  delete 10-12 and 15, skip 13-14
+    ///
+    /// Multiple files:
+    ///   a.nix:10 b.nix:20  stage from multiple files
     #[command(verbatim_doc_comment)]
     Stage {
-        /// Examples: flake.nix:137  config.nix:10..15  zsh.nix:-15..-17  gtk.nix:12,-10
+        /// One or more FILE:REFS specifications
         file_refs: Vec<String>,
     },
     /// Show unstaged changes with line numbers for staging
     ///
-    /// Example: -10: old line
-    ///          +10: new line
-    ///          Stage both with: file.nix:-10,10
+    /// Output format:
+    ///   +N:  added line (stage with N)
+    ///   -N:  deleted line (stage with -N)
+    ///
+    /// Example output:
+    ///   config.nix:
+    ///     -10:    old_setting = true;
+    ///     +10:    new_setting = false;
+    ///     +11:    extra_setting = true;
+    ///
+    /// To stage only the replacement (skip +11):
+    ///   git-stager stage config.nix:-10,10
     #[command(verbatim_doc_comment)]
     Diff {
         /// Files to show diff for (defaults to all changed files)
