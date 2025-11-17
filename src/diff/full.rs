@@ -136,9 +136,9 @@ index fa2da6e..41114ff 100644
 
         assert_eq!(filtered.files.len(), 1);
         assert_eq!(filtered.files[0].hunks.len(), 1);
-        assert_eq!(filtered.files[0].hunks[0].old.0, 8); // Preserves original position!
+        assert_eq!(filtered.files[0].hunks[0].old.start, 8); // Preserves original position!
         // new_start is recalculated: 8 + 1 = 9 (fixes the out-of-order bug)
-        assert_eq!(filtered.files[0].hunks[0].new.0, 9);
+        assert_eq!(filtered.files[0].hunks[0].new.start, 9);
     }
 
     #[test]

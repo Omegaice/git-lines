@@ -1,0 +1,14 @@
+---
+source: tests/e2e_test.rs
+expression: fixture.git_diff_cached_all()
+---
+diff --git a/config.nix b/config.nix
+index 79e51de..88ee0b1 100644
+--- a/config.nix
++++ b/config.nix
+@@ -3 +3,2 @@ line 2
+-no newline
+\ No newline at end of file
++no newline
++new line
+\ No newline at end of file

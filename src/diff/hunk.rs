@@ -1,7 +1,11 @@
 use std::fmt;
 
 /// Lines modified in the old or new version
-pub struct ModifiedLines(pub u32, pub Vec<String>);
+pub struct ModifiedLines {
+    pub start: u32,
+    pub lines: Vec<String>,
+    pub missing_final_newline: bool,
+}
 
 /// A single hunk from a git diff
 pub struct Hunk {
@@ -20,20 +24,47 @@ impl Hunk {
 
         let mut old_lines = Vec::new();
         let mut new_lines = Vec::new();
+        let mut old_missing_newline = false;
+        let mut new_missing_newline = false;
+
+        // Track what type of line we last saw (for "\ No newline" marker)
+        enum LastLineType {
+            None,
+            Old,
+            New,
+        }
+        let mut last_line_type = LastLineType::None;
 
         // Parse content lines
         for line in lines {
-            if let Some(content) = line.strip_prefix('-') {
+            if line.starts_with("\\ No newline at end of file") {
+                // This marker applies to whichever line type we saw last
+                match last_line_type {
+                    LastLineType::Old => old_missing_newline = true,
+                    LastLineType::New => new_missing_newline = true,
+                    LastLineType::None => {}
+                }
+            } else if let Some(content) = line.strip_prefix('-') {
                 old_lines.push(content.to_string());
+                last_line_type = LastLineType::Old;
             } else if let Some(content) = line.strip_prefix('+') {
                 new_lines.push(content.to_string());
+                last_line_type = LastLineType::New;
             }
             // Ignore context lines (shouldn't have any with -U0)
         }
 
         Some(Hunk {
-            old: ModifiedLines(old_start, old_lines),
-            new: ModifiedLines(new_start, new_lines),
+            old: ModifiedLines {
+                start: old_start,
+                lines: old_lines,
+                missing_final_newline: old_missing_newline,
+            },
+            new: ModifiedLines {
+                start: new_start,
+                lines: new_lines,
+                missing_final_newline: new_missing_newline,
+            },
         })
     }
 
@@ -47,26 +78,40 @@ impl Hunk {
         // Filter old (deletion) lines
         let mut new_old_lines = Vec::new();
         let mut new_old_start = None;
-        for (i, line) in self.old.1.iter().enumerate() {
-            let line_num = self.old.0 + i as u32;
+        let mut kept_last_old = false;
+        let old_last_idx = self.old.lines.len().saturating_sub(1);
+        for (i, line) in self.old.lines.iter().enumerate() {
+            let line_num = self.old.start + i as u32;
             if keep_old(line_num) {
                 if new_old_start.is_none() {
                     new_old_start = Some(line_num);
                 }
                 new_old_lines.push(line.clone());
+                if i == old_last_idx {
+                    kept_last_old = true;
+                }
             }
         }
 
         // Filter new (addition) lines
         let mut new_new_lines = Vec::new();
         let mut new_new_start = None;
-        for (i, line) in self.new.1.iter().enumerate() {
-            let line_num = self.new.0 + i as u32;
+        let mut kept_last_new = false;
+        let mut kept_first_new = false;
+        let new_last_idx = self.new.lines.len().saturating_sub(1);
+        for (i, line) in self.new.lines.iter().enumerate() {
+            let line_num = self.new.start + i as u32;
             if keep_new(line_num) {
                 if new_new_start.is_none() {
                     new_new_start = Some(line_num);
                 }
                 new_new_lines.push(line.clone());
+                if i == 0 {
+                    kept_first_new = true;
+                }
+                if i == new_last_idx {
+                    kept_last_new = true;
+                }
             }
         }
 
@@ -75,11 +120,35 @@ impl Hunk {
             return None;
         }
 
+        // Handle no-newline bridge: if old line had no trailing newline and we're
+        // adding lines after it, we must include the old deletion and synthesize
+        // the first addition to provide the \n separator
+        if self.old.missing_final_newline
+            && !new_new_lines.is_empty()
+            && !kept_first_new
+            && !self.old.lines.is_empty()
+        {
+            // Force-include the last old deletion
+            let last_old_line = self.old.lines.last().unwrap().clone();
+            let last_old_line_num = self.old.start + old_last_idx as u32;
+            if !kept_last_old {
+                new_old_lines.push(last_old_line.clone());
+                if new_old_start.is_none() {
+                    new_old_start = Some(last_old_line_num);
+                }
+                kept_last_old = true;
+            }
+
+            // Synthesize first addition as copy of old content (provides \n)
+            new_new_lines.insert(0, last_old_line);
+            new_new_start = Some(self.new.start);
+        }
+
         // Determine final start positions
         // Key insight: preserve original positions from the hunk when possible
         let final_old_start = match new_old_start {
             Some(old) => old,
-            None => self.old.0, // No deletions kept, use original position
+            None => self.old.start, // No deletions kept, use original position
         };
 
         // For new_start: if we have no deletions, we must recalculate
@@ -94,13 +163,25 @@ impl Hunk {
             // Mixed or empty: use the actual new line number
             match new_new_start {
                 Some(new) => new,
-                None => self.new.0,
+                None => self.new.start,
             }
         };
 
+        // Preserve missing_final_newline only if we kept the original last line
+        let old_missing = kept_last_old && self.old.missing_final_newline;
+        let new_missing = kept_last_new && self.new.missing_final_newline;
+
         Some(Hunk {
-            old: ModifiedLines(final_old_start, new_old_lines),
-            new: ModifiedLines(final_new_start, new_new_lines),
+            old: ModifiedLines {
+                start: final_old_start,
+                lines: new_old_lines,
+                missing_final_newline: old_missing,
+            },
+            new: ModifiedLines {
+                start: final_new_start,
+                lines: new_new_lines,
+                missing_final_newline: new_missing,
+            },
         })
     }
 
@@ -136,28 +217,34 @@ impl Hunk {
 impl fmt::Display for Hunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Build header
-        let old_part = match self.old.1.len() {
-            0 => format!("-{},0", self.old.0),
-            1 => format!("-{}", self.old.0),
-            n => format!("-{},{}", self.old.0, n),
+        let old_part = match self.old.lines.len() {
+            0 => format!("-{},0", self.old.start),
+            1 => format!("-{}", self.old.start),
+            n => format!("-{},{}", self.old.start, n),
         };
 
-        let new_part = match self.new.1.len() {
-            0 => format!("+{},0", self.new.0),
-            1 => format!("+{}", self.new.0),
-            n => format!("+{},{}", self.new.0, n),
+        let new_part = match self.new.lines.len() {
+            0 => format!("+{},0", self.new.start),
+            1 => format!("+{}", self.new.start),
+            n => format!("+{},{}", self.new.start, n),
         };
 
         writeln!(f, "@@ {} {} @@", old_part, new_part)?;
 
         // Add deletion lines
-        for line in &self.old.1 {
+        for line in &self.old.lines {
             writeln!(f, "-{}", line)?;
+        }
+        if self.old.missing_final_newline {
+            writeln!(f, "\\ No newline at end of file")?;
         }
 
         // Add addition lines
-        for line in &self.new.1 {
+        for line in &self.new.lines {
             writeln!(f, "+{}", line)?;
+        }
+        if self.new.missing_final_newline {
+            writeln!(f, "\\ No newline at end of file")?;
         }
 
         Ok(())
@@ -171,8 +258,16 @@ mod tests {
     #[test]
     fn render_pure_insertion() {
         let hunk = Hunk {
-            old: ModifiedLines(10, vec![]),
-            new: ModifiedLines(11, vec!["new line here".to_string()]),
+            old: ModifiedLines {
+                start: 10,
+                lines: vec![],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 11,
+                lines: vec!["new line here".to_string()],
+                missing_final_newline: false,
+            },
         };
         assert_eq!(hunk.to_string(), "@@ -10,0 +11 @@\n+new line here\n");
     }
@@ -180,8 +275,16 @@ mod tests {
     #[test]
     fn render_pure_deletion() {
         let hunk = Hunk {
-            old: ModifiedLines(10, vec!["old line removed".to_string()]),
-            new: ModifiedLines(9, vec![]),
+            old: ModifiedLines {
+                start: 10,
+                lines: vec!["old line removed".to_string()],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 9,
+                lines: vec![],
+                missing_final_newline: false,
+            },
         };
         assert_eq!(hunk.to_string(), "@@ -10 +9,0 @@\n-old line removed\n");
     }
@@ -189,8 +292,16 @@ mod tests {
     #[test]
     fn render_single_line_replacement() {
         let hunk = Hunk {
-            old: ModifiedLines(10, vec!["old version".to_string()]),
-            new: ModifiedLines(10, vec!["new version".to_string()]),
+            old: ModifiedLines {
+                start: 10,
+                lines: vec!["old version".to_string()],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 10,
+                lines: vec!["new version".to_string()],
+                missing_final_newline: false,
+            },
         };
         assert_eq!(
             hunk.to_string(),
@@ -201,18 +312,20 @@ mod tests {
     #[test]
     fn render_multi_line_change() {
         let hunk = Hunk {
-            old: ModifiedLines(
-                10,
-                vec!["first old line".to_string(), "second old line".to_string()],
-            ),
-            new: ModifiedLines(
-                10,
-                vec![
+            old: ModifiedLines {
+                start: 10,
+                lines: vec!["first old line".to_string(), "second old line".to_string()],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 10,
+                lines: vec![
                     "first new line".to_string(),
                     "second new line".to_string(),
                     "third new line".to_string(),
                 ],
-            ),
+                missing_final_newline: false,
+            },
         };
         assert_eq!(
             hunk.to_string(),
@@ -223,8 +336,16 @@ mod tests {
     #[test]
     fn render_multiple_insertions() {
         let hunk = Hunk {
-            old: ModifiedLines(5, vec![]),
-            new: ModifiedLines(6, vec!["line one".to_string(), "line two".to_string()]),
+            old: ModifiedLines {
+                start: 5,
+                lines: vec![],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 6,
+                lines: vec!["line one".to_string(), "line two".to_string()],
+                missing_final_newline: false,
+            },
         };
         assert_eq!(hunk.to_string(), "@@ -5,0 +6,2 @@\n+line one\n+line two\n");
     }
@@ -232,11 +353,16 @@ mod tests {
     #[test]
     fn render_multiple_deletions() {
         let hunk = Hunk {
-            old: ModifiedLines(
-                15,
-                vec!["removed one".to_string(), "removed two".to_string()],
-            ),
-            new: ModifiedLines(14, vec![]),
+            old: ModifiedLines {
+                start: 15,
+                lines: vec!["removed one".to_string(), "removed two".to_string()],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 14,
+                lines: vec![],
+                missing_final_newline: false,
+            },
         };
         assert_eq!(
             hunk.to_string(),
@@ -248,20 +374,20 @@ mod tests {
     fn parse_pure_insertion() {
         let text = "@@ -10,0 +11 @@\n+new line here";
         let hunk = Hunk::parse(text).unwrap();
-        assert_eq!(hunk.old.0, 10);
-        assert_eq!(hunk.old.1, Vec::<String>::new());
-        assert_eq!(hunk.new.0, 11);
-        assert_eq!(hunk.new.1, vec!["new line here"]);
+        assert_eq!(hunk.old.start, 10);
+        assert_eq!(hunk.old.lines, Vec::<String>::new());
+        assert_eq!(hunk.new.start, 11);
+        assert_eq!(hunk.new.lines, vec!["new line here"]);
     }
 
     #[test]
     fn parse_pure_deletion() {
         let text = "@@ -10 +9,0 @@\n-old line removed";
         let hunk = Hunk::parse(text).unwrap();
-        assert_eq!(hunk.old.0, 10);
-        assert_eq!(hunk.old.1, vec!["old line removed"]);
-        assert_eq!(hunk.new.0, 9);
-        assert_eq!(hunk.new.1, Vec::<String>::new());
+        assert_eq!(hunk.old.start, 10);
+        assert_eq!(hunk.old.lines, vec!["old line removed"]);
+        assert_eq!(hunk.new.start, 9);
+        assert_eq!(hunk.new.lines, Vec::<String>::new());
     }
 
     #[test]
@@ -269,10 +395,10 @@ mod tests {
         let text =
             "@@ -10,2 +10,3 @@\n-first old\n-second old\n+first new\n+second new\n+third new";
         let hunk = Hunk::parse(text).unwrap();
-        assert_eq!(hunk.old.0, 10);
-        assert_eq!(hunk.old.1, vec!["first old", "second old"]);
-        assert_eq!(hunk.new.0, 10);
-        assert_eq!(hunk.new.1, vec!["first new", "second new", "third new"]);
+        assert_eq!(hunk.old.start, 10);
+        assert_eq!(hunk.old.lines, vec!["first old", "second old"]);
+        assert_eq!(hunk.new.start, 10);
+        assert_eq!(hunk.new.lines, vec!["first new", "second new", "third new"]);
     }
 
     #[test]
@@ -293,57 +419,72 @@ mod tests {
     #[test]
     fn retain_single_addition_from_mixed() {
         let hunk = Hunk {
-            old: ModifiedLines(
-                10,
-                vec!["deleted one".to_string(), "deleted two".to_string()],
-            ),
-            new: ModifiedLines(
-                10,
-                vec![
+            old: ModifiedLines {
+                start: 10,
+                lines: vec!["deleted one".to_string(), "deleted two".to_string()],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 10,
+                lines: vec![
                     "added one".to_string(),
                     "added two".to_string(),
                     "added three".to_string(),
                 ],
-            ),
+                missing_final_newline: false,
+            },
         };
 
         let filtered = hunk.retain(|_| false, |n| n == 12).unwrap();
 
         // When filtering to only additions (no deletions), new_start is recalculated
         // as old_start + 1, since insertions appear right after the old position
-        assert_eq!(filtered.old.0, 10);
-        assert_eq!(filtered.old.1, Vec::<String>::new());
-        assert_eq!(filtered.new.0, 11); // 10 + 1, not preserved 12
-        assert_eq!(filtered.new.1, vec!["added three"]);
+        assert_eq!(filtered.old.start, 10);
+        assert_eq!(filtered.old.lines, Vec::<String>::new());
+        assert_eq!(filtered.new.start, 11); // 10 + 1, not preserved 12
+        assert_eq!(filtered.new.lines, vec!["added three"]);
         assert_eq!(filtered.to_string(), "@@ -10,0 +11 @@\n+added three\n");
     }
 
     #[test]
     fn retain_single_deletion_from_mixed() {
         let hunk = Hunk {
-            old: ModifiedLines(
-                10,
-                vec!["deleted one".to_string(), "deleted two".to_string()],
-            ),
-            new: ModifiedLines(10, vec!["added one".to_string(), "added two".to_string()]),
+            old: ModifiedLines {
+                start: 10,
+                lines: vec!["deleted one".to_string(), "deleted two".to_string()],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 10,
+                lines: vec!["added one".to_string(), "added two".to_string()],
+                missing_final_newline: false,
+            },
         };
 
         let filtered = hunk.retain(|o| o == 11, |_| false).unwrap();
 
         // When filtering to only deletions (no additions), new_start is recalculated
         // as old_start, since the gap appears at that position
-        assert_eq!(filtered.old.0, 11);
-        assert_eq!(filtered.old.1, vec!["deleted two"]);
-        assert_eq!(filtered.new.0, 11); // same as old_start for pure deletion
-        assert_eq!(filtered.new.1, Vec::<String>::new());
+        assert_eq!(filtered.old.start, 11);
+        assert_eq!(filtered.old.lines, vec!["deleted two"]);
+        assert_eq!(filtered.new.start, 11); // same as old_start for pure deletion
+        assert_eq!(filtered.new.lines, Vec::<String>::new());
         assert_eq!(filtered.to_string(), "@@ -11 +11,0 @@\n-deleted two\n");
     }
 
     #[test]
     fn retain_nothing_returns_none() {
         let hunk = Hunk {
-            old: ModifiedLines(10, vec!["deleted".to_string()]),
-            new: ModifiedLines(10, vec!["added".to_string()]),
+            old: ModifiedLines {
+                start: 10,
+                lines: vec!["deleted".to_string()],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 10,
+                lines: vec!["added".to_string()],
+                missing_final_newline: false,
+            },
         };
 
         let filtered = hunk.retain(|_| false, |_| false);
@@ -353,23 +494,28 @@ mod tests {
     #[test]
     fn retain_subset_of_additions() {
         let hunk = Hunk {
-            old: ModifiedLines(9, vec![]),
-            new: ModifiedLines(
-                10,
-                vec![
+            old: ModifiedLines {
+                start: 9,
+                lines: vec![],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 10,
+                lines: vec![
                     "line ten".to_string(),
                     "line eleven".to_string(),
                     "line twelve".to_string(),
                 ],
-            ),
+                missing_final_newline: false,
+            },
         };
 
         let filtered = hunk.retain(|_| false, |n| n >= 11).unwrap();
 
         // Pure insertion: new_start = old_start + 1
-        assert_eq!(filtered.old.0, 9);
-        assert_eq!(filtered.new.0, 10); // 9 + 1, not preserved 11
-        assert_eq!(filtered.new.1, vec!["line eleven", "line twelve"]);
+        assert_eq!(filtered.old.start, 9);
+        assert_eq!(filtered.new.start, 10); // 9 + 1, not preserved 11
+        assert_eq!(filtered.new.lines, vec!["line eleven", "line twelve"]);
         assert_eq!(
             filtered.to_string(),
             "@@ -9,0 +10,2 @@\n+line eleven\n+line twelve\n"
@@ -380,17 +526,25 @@ mod tests {
     fn parse_insertion_at_file_start() {
         let text = "@@ -0,0 +1,2 @@\n+# Header\n+# Second line";
         let hunk = Hunk::parse(text).unwrap();
-        assert_eq!(hunk.old.0, 0);
-        assert_eq!(hunk.old.1, Vec::<String>::new());
-        assert_eq!(hunk.new.0, 1);
-        assert_eq!(hunk.new.1, vec!["# Header", "# Second line"]);
+        assert_eq!(hunk.old.start, 0);
+        assert_eq!(hunk.old.lines, Vec::<String>::new());
+        assert_eq!(hunk.new.start, 1);
+        assert_eq!(hunk.new.lines, vec!["# Header", "# Second line"]);
     }
 
     #[test]
     fn render_insertion_at_file_start() {
         let hunk = Hunk {
-            old: ModifiedLines(0, vec![]),
-            new: ModifiedLines(1, vec!["# First line".to_string()]),
+            old: ModifiedLines {
+                start: 0,
+                lines: vec![],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 1,
+                lines: vec!["# First line".to_string()],
+                missing_final_newline: false,
+            },
         };
         assert_eq!(hunk.to_string(), "@@ -0,0 +1 @@\n+# First line\n");
     }
@@ -399,27 +553,32 @@ mod tests {
     fn parse_content_with_diff_markers() {
         let text = "@@ -5,0 +6,3 @@\n++++ this line starts with plus\n+--- this line starts with minus\n+@@ this looks like a header";
         let hunk = Hunk::parse(text).unwrap();
-        assert_eq!(hunk.new.1.len(), 3);
-        assert_eq!(hunk.new.1[0], "+++ this line starts with plus");
-        assert_eq!(hunk.new.1[1], "--- this line starts with minus");
-        assert_eq!(hunk.new.1[2], "@@ this looks like a header");
+        assert_eq!(hunk.new.lines.len(), 3);
+        assert_eq!(hunk.new.lines[0], "+++ this line starts with plus");
+        assert_eq!(hunk.new.lines[1], "--- this line starts with minus");
+        assert_eq!(hunk.new.lines[2], "@@ this looks like a header");
     }
 
     #[test]
     fn parse_empty_line_content() {
         let text = "@@ -10,0 +11,3 @@\n+first\n+\n+third";
         let hunk = Hunk::parse(text).unwrap();
-        assert_eq!(hunk.new.1, vec!["first", "", "third"]);
+        assert_eq!(hunk.new.lines, vec!["first", "", "third"]);
     }
 
     #[test]
     fn render_empty_line_content() {
         let hunk = Hunk {
-            old: ModifiedLines(10, vec![]),
-            new: ModifiedLines(
-                11,
-                vec!["first".to_string(), "".to_string(), "third".to_string()],
-            ),
+            old: ModifiedLines {
+                start: 10,
+                lines: vec![],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 11,
+                lines: vec!["first".to_string(), "".to_string(), "third".to_string()],
+                missing_final_newline: false,
+            },
         };
         assert_eq!(hunk.to_string(), "@@ -10,0 +11,3 @@\n+first\n+\n+third\n");
     }
@@ -427,55 +586,172 @@ mod tests {
     #[test]
     fn retain_non_contiguous_lines() {
         let hunk = Hunk {
-            old: ModifiedLines(9, vec![]),
-            new: ModifiedLines(
-                10,
-                vec![
+            old: ModifiedLines {
+                start: 9,
+                lines: vec![],
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 10,
+                lines: vec![
                     "ten".to_string(),
                     "eleven".to_string(),
                     "twelve".to_string(),
                     "thirteen".to_string(),
                 ],
-            ),
+                missing_final_newline: false,
+            },
         };
 
         let filtered = hunk.retain(|_| false, |n| n == 10 || n == 12).unwrap();
 
-        assert_eq!(filtered.old.0, 9);
-        assert_eq!(filtered.new.0, 10);
-        assert_eq!(filtered.new.1, vec!["ten", "twelve"]);
+        assert_eq!(filtered.old.start, 9);
+        assert_eq!(filtered.new.start, 10);
+        assert_eq!(filtered.new.lines, vec!["ten", "twelve"]);
     }
 
     #[test]
     fn retain_mixed_partial_selection() {
         let hunk = Hunk {
-            old: ModifiedLines(
-                10,
-                vec![
+            old: ModifiedLines {
+                start: 10,
+                lines: vec![
                     "old one".to_string(),
                     "old two".to_string(),
                     "old three".to_string(),
                 ],
-            ),
-            new: ModifiedLines(
-                10,
-                vec![
+                missing_final_newline: false,
+            },
+            new: ModifiedLines {
+                start: 10,
+                lines: vec![
                     "new one".to_string(),
                     "new two".to_string(),
                     "new three".to_string(),
                 ],
-            ),
+                missing_final_newline: false,
+            },
         };
 
         let filtered = hunk.retain(|o| o == 11, |n| n == 12).unwrap();
 
-        assert_eq!(filtered.old.0, 11);
-        assert_eq!(filtered.old.1, vec!["old two"]);
-        assert_eq!(filtered.new.0, 12);
-        assert_eq!(filtered.new.1, vec!["new three"]);
+        assert_eq!(filtered.old.start, 11);
+        assert_eq!(filtered.old.lines, vec!["old two"]);
+        assert_eq!(filtered.new.start, 12);
+        assert_eq!(filtered.new.lines, vec!["new three"]);
         assert_eq!(
             filtered.to_string(),
             "@@ -11 +12 @@\n-old two\n+new three\n"
+        );
+    }
+
+    // =========================================================================
+    // No newline at EOF tests
+    // =========================================================================
+
+    #[test]
+    fn parse_old_missing_newline_only() {
+        // File originally had no trailing newline, new version adds one
+        let text =
+            "@@ -3 +3,2 @@\n-last line\n\\ No newline at end of file\n+last line\n+new final line";
+        let hunk = Hunk::parse(text).unwrap();
+        assert_eq!(hunk.old.start, 3);
+        assert_eq!(hunk.old.lines, vec!["last line"]);
+        assert_eq!(hunk.new.start, 3);
+        assert_eq!(hunk.new.lines, vec!["last line", "new final line"]);
+        // TODO: after implementation, check missing_final_newline flags
+    }
+
+    #[test]
+    fn parse_new_missing_newline_only() {
+        // File originally had newline, new version removes it
+        let text = "@@ -3 +3 @@\n-old line\n+old line\n\\ No newline at end of file";
+        let hunk = Hunk::parse(text).unwrap();
+        assert_eq!(hunk.old.start, 3);
+        assert_eq!(hunk.old.lines, vec!["old line"]);
+        assert_eq!(hunk.new.start, 3);
+        assert_eq!(hunk.new.lines, vec!["old line"]);
+        // TODO: after implementation, check missing_final_newline flags
+    }
+
+    #[test]
+    fn parse_both_missing_newline() {
+        // Both old and new lack trailing newline
+        let text = "@@ -3 +3 @@\n-old version\n\\ No newline at end of file\n+new version\n\\ No newline at end of file";
+        let hunk = Hunk::parse(text).unwrap();
+        assert_eq!(hunk.old.start, 3);
+        assert_eq!(hunk.old.lines, vec!["old version"]);
+        assert_eq!(hunk.new.start, 3);
+        assert_eq!(hunk.new.lines, vec!["new version"]);
+        // TODO: after implementation, check missing_final_newline flags
+    }
+
+    #[test]
+    fn roundtrip_old_missing_newline() {
+        let original = "@@ -3 +3,2 @@\n-last line\n\\ No newline at end of file\n+last line\n+new final line\n";
+        let hunk = Hunk::parse(original).unwrap();
+        assert_eq!(hunk.to_string(), original);
+    }
+
+    #[test]
+    fn roundtrip_new_missing_newline() {
+        let original = "@@ -3 +3 @@\n-old line\n+old line\n\\ No newline at end of file\n";
+        let hunk = Hunk::parse(original).unwrap();
+        assert_eq!(hunk.to_string(), original);
+    }
+
+    #[test]
+    fn roundtrip_both_missing_newline() {
+        let original = "@@ -3 +3 @@\n-old version\n\\ No newline at end of file\n+new version\n\\ No newline at end of file\n";
+        let hunk = Hunk::parse(original).unwrap();
+        assert_eq!(hunk.to_string(), original);
+    }
+
+    #[test]
+    fn retain_preserves_missing_newline_when_last_kept() {
+        // Multiple additions, last one has no newline marker
+        let text =
+            "@@ -5,0 +6,2 @@\n+first addition\n+second addition\n\\ No newline at end of file";
+        let hunk = Hunk::parse(text).unwrap();
+
+        // Keep only last line (line 7)
+        let filtered = hunk.retain(|_| false, |n| n == 7).unwrap();
+
+        // Should preserve the no-newline marker since we kept the last line
+        assert_eq!(
+            filtered.to_string(),
+            "@@ -5,0 +6 @@\n+second addition\n\\ No newline at end of file\n"
+        );
+    }
+
+    #[test]
+    fn retain_clears_missing_newline_when_last_filtered() {
+        // Multiple additions, last one has no newline marker
+        let text =
+            "@@ -5,0 +6,2 @@\n+first addition\n+second addition\n\\ No newline at end of file";
+        let hunk = Hunk::parse(text).unwrap();
+
+        // Keep only first line (line 6), not the last
+        let filtered = hunk.retain(|_| false, |n| n == 6).unwrap();
+
+        // Should NOT have no-newline marker since we didn't keep the last line
+        assert_eq!(filtered.to_string(), "@@ -5,0 +6 @@\n+first addition\n");
+    }
+
+    #[test]
+    fn retain_mixed_with_old_missing_newline() {
+        // Replacement where old line had no newline
+        let text =
+            "@@ -10 +10 @@\n-old content\n\\ No newline at end of file\n+new content with newline";
+        let hunk = Hunk::parse(text).unwrap();
+
+        // Keep only the addition
+        let filtered = hunk.retain(|_| false, |n| n == 10).unwrap();
+
+        // Old's no-newline marker should not appear since we filtered out deletions
+        assert_eq!(
+            filtered.to_string(),
+            "@@ -10,0 +11 @@\n+new content with newline\n"
         );
     }
 }

@@ -474,3 +474,143 @@ fn case_10_single_command_multiple_hunks() {
     fixture.stager.stage("config.nix:10,3").unwrap();
     insta::assert_snapshot!("case_10_staged", fixture.git_diff_cached_all());
 }
+
+// =============================================================================
+// Case 11: Files Without Trailing Newline
+// =============================================================================
+
+#[test]
+fn case_11_a_partial_stage() {
+    let fixture = Fixture::new("case_11_a");
+    // File without trailing newline
+    fixture.write_file("config.nix", "line 1\nline 2\nno newline");
+    fixture.stage_file("config.nix");
+    fixture.commit("initial");
+
+    // Add lines after the no-newline line
+    fixture.write_file("config.nix", "line 1\nline 2\nno newline\nnew line");
+
+    // Stage only the new line - git-stager auto-synthesizes bridge (-3,+3)
+    insta::assert_snapshot!(
+        "case_11_a_diff",
+        fixture.stager.diff(&["config.nix".to_string()]).unwrap()
+    );
+    fixture.stager.stage("config.nix:4").unwrap();
+    insta::assert_snapshot!("case_11_a_staged", fixture.git_diff_cached_all());
+}
+
+#[test]
+fn case_11_b_stage_all() {
+    let fixture = Fixture::new("case_11_b");
+    fixture.write_file("config.nix", "line 1\nline 2\nno newline");
+    fixture.stage_file("config.nix");
+    fixture.commit("initial");
+
+    fixture.write_file("config.nix", "line 1\nline 2\nno newline\nnew line");
+
+    insta::assert_snapshot!(
+        "case_11_b_diff",
+        fixture.stager.diff(&["config.nix".to_string()]).unwrap()
+    );
+    // Stage everything explicitly: -3 (delete old), +3 (add with \n), +4 (add new line)
+    fixture.stager.stage("config.nix:-3,3,4").unwrap();
+    insta::assert_snapshot!("case_11_b_staged", fixture.git_diff_cached_all());
+}
+
+#[test]
+fn case_11_c_delete() {
+    let fixture = Fixture::new("case_11_c");
+    fixture.write_file("config.nix", "line 1\nline 2\nno newline");
+    fixture.stage_file("config.nix");
+    fixture.commit("initial");
+
+    // Delete the last line (which had no newline)
+    fixture.write_file("config.nix", "line 1\nline 2\n");
+
+    insta::assert_snapshot!(
+        "case_11_c_diff",
+        fixture.stager.diff(&["config.nix".to_string()]).unwrap()
+    );
+    fixture.stager.stage("config.nix:-3").unwrap();
+    insta::assert_snapshot!("case_11_c_staged", fixture.git_diff_cached_all());
+}
+
+#[test]
+fn case_11_d_modify_content() {
+    let fixture = Fixture::new("case_11_d");
+    fixture.write_file("config.nix", "line 1\nline 2\nold content");
+    fixture.stage_file("config.nix");
+    fixture.commit("initial");
+
+    // Change content but keep no trailing newline
+    fixture.write_file("config.nix", "line 1\nline 2\nnew content");
+
+    insta::assert_snapshot!(
+        "case_11_d_diff",
+        fixture.stager.diff(&["config.nix".to_string()]).unwrap()
+    );
+    fixture.stager.stage("config.nix:-3,3").unwrap();
+    insta::assert_snapshot!("case_11_d_staged", fixture.git_diff_cached_all());
+}
+
+#[test]
+fn case_11_e_bridge_only() {
+    let fixture = Fixture::new("case_11_e");
+    fixture.write_file("config.nix", "line 1\nline 2\nno newline");
+    fixture.stage_file("config.nix");
+    fixture.commit("initial");
+
+    // Add multiple lines after no-newline line
+    fixture.write_file(
+        "config.nix",
+        "line 1\nline 2\nno newline\nfourth line\nfifth line",
+    );
+
+    insta::assert_snapshot!(
+        "case_11_e_diff",
+        fixture.stager.diff(&["config.nix".to_string()]).unwrap()
+    );
+    // Stage only the bridge (gives no-newline line its \n) but not the actual additions
+    fixture.stager.stage("config.nix:-3,3").unwrap();
+    insta::assert_snapshot!("case_11_e_staged", fixture.git_diff_cached_all());
+}
+
+#[test]
+fn case_11_f_skip_middle() {
+    let fixture = Fixture::new("case_11_f");
+    fixture.write_file("config.nix", "line 1\nline 2\nno newline");
+    fixture.stage_file("config.nix");
+    fixture.commit("initial");
+
+    // Add multiple lines after no-newline line
+    fixture.write_file(
+        "config.nix",
+        "line 1\nline 2\nno newline\nfourth line\nfifth line",
+    );
+
+    insta::assert_snapshot!(
+        "case_11_f_diff",
+        fixture.stager.diff(&["config.nix".to_string()]).unwrap()
+    );
+    // Stage only line 5, skipping line 4 - git-stager auto-synthesizes bridge
+    fixture.stager.stage("config.nix:5").unwrap();
+    insta::assert_snapshot!("case_11_f_staged", fixture.git_diff_cached_all());
+}
+
+#[test]
+fn case_11_g_add_trailing_newline() {
+    let fixture = Fixture::new("case_11_g");
+    fixture.write_file("config.nix", "line 1\nline 2\nno newline");
+    fixture.stage_file("config.nix");
+    fixture.commit("initial");
+
+    // Add trailing newline to file (no new lines, just the \n)
+    fixture.write_file("config.nix", "line 1\nline 2\nno newline\n");
+
+    insta::assert_snapshot!(
+        "case_11_g_diff",
+        fixture.stager.diff(&["config.nix".to_string()]).unwrap()
+    );
+    fixture.stager.stage("config.nix:-3,3").unwrap();
+    insta::assert_snapshot!("case_11_g_staged", fixture.git_diff_cached_all());
+}

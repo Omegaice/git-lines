@@ -39,8 +39,8 @@ impl FileDiff {
                 }
                 current_hunk_text = line.to_string();
                 current_hunk_text.push('\n');
-            } else if line.starts_with('+') || line.starts_with('-') {
-                // Content line
+            } else if line.starts_with('+') || line.starts_with('-') || line.starts_with('\\') {
+                // Content line or "No newline at end of file" marker
                 current_hunk_text.push_str(line);
                 current_hunk_text.push('\n');
             }
@@ -110,9 +110,9 @@ index abc1234..def5678 100644
         let file_diff = FileDiff::parse(diff).unwrap();
         assert_eq!(file_diff.path, "flake.nix");
         assert_eq!(file_diff.hunks.len(), 1);
-        assert_eq!(file_diff.hunks[0].old.0, 136);
-        assert_eq!(file_diff.hunks[0].new.0, 137);
-        assert_eq!(file_diff.hunks[0].new.1, vec!["      debug = true;"]);
+        assert_eq!(file_diff.hunks[0].old.start, 136);
+        assert_eq!(file_diff.hunks[0].new.start, 137);
+        assert_eq!(file_diff.hunks[0].new.lines, vec!["      debug = true;"]);
     }
 
     #[test]
@@ -130,13 +130,13 @@ index fa2da6e..41114ff 100644
         assert_eq!(file_diff.path, "config.nix");
         assert_eq!(file_diff.hunks.len(), 2);
 
-        assert_eq!(file_diff.hunks[0].old.0, 2);
-        assert_eq!(file_diff.hunks[0].new.0, 3);
-        assert_eq!(file_diff.hunks[0].new.1, vec!["# FIRST INSERTION"]);
+        assert_eq!(file_diff.hunks[0].old.start, 2);
+        assert_eq!(file_diff.hunks[0].new.start, 3);
+        assert_eq!(file_diff.hunks[0].new.lines, vec!["# FIRST INSERTION"]);
 
-        assert_eq!(file_diff.hunks[1].old.0, 8);
-        assert_eq!(file_diff.hunks[1].new.0, 10);
-        assert_eq!(file_diff.hunks[1].new.1, vec!["# SECOND INSERTION"]);
+        assert_eq!(file_diff.hunks[1].old.start, 8);
+        assert_eq!(file_diff.hunks[1].new.start, 10);
+        assert_eq!(file_diff.hunks[1].new.lines, vec!["# SECOND INSERTION"]);
     }
 
     #[test]
@@ -144,8 +144,16 @@ index fa2da6e..41114ff 100644
         let file_diff = FileDiff {
             path: "test.nix".to_string(),
             hunks: vec![Hunk {
-                old: ModifiedLines(10, vec![]),
-                new: ModifiedLines(11, vec!["new line".to_string()]),
+                old: ModifiedLines {
+                    start: 10,
+                    lines: vec![],
+                    missing_final_newline: false,
+                },
+                new: ModifiedLines {
+                    start: 11,
+                    lines: vec!["new line".to_string()],
+                    missing_final_newline: false,
+                },
             }],
         };
 
@@ -161,12 +169,28 @@ index fa2da6e..41114ff 100644
             path: "config.nix".to_string(),
             hunks: vec![
                 Hunk {
-                    old: ModifiedLines(2, vec![]),
-                    new: ModifiedLines(3, vec!["# FIRST".to_string()]),
+                    old: ModifiedLines {
+                        start: 2,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                    new: ModifiedLines {
+                        start: 3,
+                        lines: vec!["# FIRST".to_string()],
+                        missing_final_newline: false,
+                    },
                 },
                 Hunk {
-                    old: ModifiedLines(8, vec![]),
-                    new: ModifiedLines(10, vec!["# SECOND".to_string()]),
+                    old: ModifiedLines {
+                        start: 8,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                    new: ModifiedLines {
+                        start: 10,
+                        lines: vec!["# SECOND".to_string()],
+                        missing_final_newline: false,
+                    },
                 },
             ],
         };
@@ -182,8 +206,16 @@ index fa2da6e..41114ff 100644
         let file_diff = FileDiff {
             path: "test.nix".to_string(),
             hunks: vec![Hunk {
-                old: ModifiedLines(10, vec![]),
-                new: ModifiedLines(11, vec!["new line".to_string()]),
+                old: ModifiedLines {
+                    start: 10,
+                    lines: vec![],
+                    missing_final_newline: false,
+                },
+                new: ModifiedLines {
+                    start: 11,
+                    lines: vec!["new line".to_string()],
+                    missing_final_newline: false,
+                },
             }],
         };
 
@@ -192,9 +224,9 @@ index fa2da6e..41114ff 100644
 
         assert_eq!(reparsed.path, file_diff.path);
         assert_eq!(reparsed.hunks.len(), 1);
-        assert_eq!(reparsed.hunks[0].old.0, 10);
-        assert_eq!(reparsed.hunks[0].new.0, 11);
-        assert_eq!(reparsed.hunks[0].new.1, vec!["new line"]);
+        assert_eq!(reparsed.hunks[0].old.start, 10);
+        assert_eq!(reparsed.hunks[0].new.start, 11);
+        assert_eq!(reparsed.hunks[0].new.lines, vec!["new line"]);
     }
 
     #[test]
@@ -203,12 +235,28 @@ index fa2da6e..41114ff 100644
             path: "config.nix".to_string(),
             hunks: vec![
                 Hunk {
-                    old: ModifiedLines(2, vec![]),
-                    new: ModifiedLines(3, vec!["# FIRST".to_string()]),
+                    old: ModifiedLines {
+                        start: 2,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                    new: ModifiedLines {
+                        start: 3,
+                        lines: vec!["# FIRST".to_string()],
+                        missing_final_newline: false,
+                    },
                 },
                 Hunk {
-                    old: ModifiedLines(8, vec![]),
-                    new: ModifiedLines(10, vec!["# SECOND".to_string()]),
+                    old: ModifiedLines {
+                        start: 8,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                    new: ModifiedLines {
+                        start: 10,
+                        lines: vec!["# SECOND".to_string()],
+                        missing_final_newline: false,
+                    },
                 },
             ],
         };
@@ -218,10 +266,10 @@ index fa2da6e..41114ff 100644
 
         assert_eq!(reparsed.path, file_diff.path);
         assert_eq!(reparsed.hunks.len(), 2);
-        assert_eq!(reparsed.hunks[0].old.0, 2);
-        assert_eq!(reparsed.hunks[0].new.0, 3);
-        assert_eq!(reparsed.hunks[1].old.0, 8);
-        assert_eq!(reparsed.hunks[1].new.0, 10);
+        assert_eq!(reparsed.hunks[0].old.start, 2);
+        assert_eq!(reparsed.hunks[0].new.start, 3);
+        assert_eq!(reparsed.hunks[1].old.start, 8);
+        assert_eq!(reparsed.hunks[1].new.start, 10);
     }
 
     #[test]
@@ -230,12 +278,28 @@ index fa2da6e..41114ff 100644
             path: "config.nix".to_string(),
             hunks: vec![
                 Hunk {
-                    old: ModifiedLines(2, vec![]),
-                    new: ModifiedLines(3, vec!["# FIRST".to_string()]),
+                    old: ModifiedLines {
+                        start: 2,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                    new: ModifiedLines {
+                        start: 3,
+                        lines: vec!["# FIRST".to_string()],
+                        missing_final_newline: false,
+                    },
                 },
                 Hunk {
-                    old: ModifiedLines(8, vec![]),
-                    new: ModifiedLines(10, vec!["# SECOND".to_string()]),
+                    old: ModifiedLines {
+                        start: 8,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                    new: ModifiedLines {
+                        start: 10,
+                        lines: vec!["# SECOND".to_string()],
+                        missing_final_newline: false,
+                    },
                 },
             ],
         };
@@ -244,11 +308,11 @@ index fa2da6e..41114ff 100644
 
         assert_eq!(filtered.path, "config.nix");
         assert_eq!(filtered.hunks.len(), 1);
-        assert_eq!(filtered.hunks[0].old.0, 8);
+        assert_eq!(filtered.hunks[0].old.start, 8);
         // new_start is recalculated: old_start + 1 = 8 + 1 = 9
         // This is the FIX for the out-of-order staging bug!
-        assert_eq!(filtered.hunks[0].new.0, 9);
-        assert_eq!(filtered.hunks[0].new.1, vec!["# SECOND"]);
+        assert_eq!(filtered.hunks[0].new.start, 9);
+        assert_eq!(filtered.hunks[0].new.lines, vec!["# SECOND"]);
 
         assert_eq!(
             filtered.to_string(),
@@ -261,12 +325,45 @@ index fa2da6e..41114ff 100644
         let file_diff = FileDiff {
             path: "test.nix".to_string(),
             hunks: vec![Hunk {
-                old: ModifiedLines(10, vec![]),
-                new: ModifiedLines(11, vec!["line".to_string()]),
+                old: ModifiedLines {
+                    start: 10,
+                    lines: vec![],
+                    missing_final_newline: false,
+                },
+                new: ModifiedLines {
+                    start: 11,
+                    lines: vec!["line".to_string()],
+                    missing_final_newline: false,
+                },
             }],
         };
 
         let filtered = file_diff.retain(|_| false, |_| false);
         assert!(filtered.is_none());
+    }
+
+    #[test]
+    fn parse_no_newline_at_eof_marker() {
+        let diff = r#"diff --git a/config.nix b/config.nix
+index 79e51de..88ee0b1 100644
+--- a/config.nix
++++ b/config.nix
+@@ -3 +3,2 @@ line 2
+-no newline
+\ No newline at end of file
++no newline
++new line
+\ No newline at end of file
+"#;
+        let file_diff = FileDiff::parse(diff).unwrap();
+        assert_eq!(file_diff.path, "config.nix");
+        assert_eq!(file_diff.hunks.len(), 1);
+
+        // The hunk should preserve the "no newline" information
+        // Currently this fails: the marker is stripped and lost
+        assert_eq!(
+            file_diff.to_string(),
+            "--- a/config.nix\n+++ b/config.nix\n@@ -3 +3,2 @@\n-no newline\n\\ No newline at end of file\n+no newline\n+new line\n\\ No newline at end of file\n"
+        );
     }
 }

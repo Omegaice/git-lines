@@ -1,0 +1,7 @@
+---
+source: tests/e2e_test.rs
+expression: "fixture.stager.diff(&[\"config.nix\".to_string()]).unwrap()"
+---
+config.nix:
+  -3:	old content
+  +3:	new content

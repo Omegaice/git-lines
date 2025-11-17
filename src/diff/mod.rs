@@ -14,14 +14,14 @@ pub fn format_diff(diff: &Diff) -> String {
 
         for hunk in &file_diff.hunks {
             // Show deletions
-            for (i, line) in hunk.old.1.iter().enumerate() {
-                let line_num = hunk.old.0 + i as u32;
+            for (i, line) in hunk.old.lines.iter().enumerate() {
+                let line_num = hunk.old.start + i as u32;
                 result.push_str(&format!("  -{}:\t{}\n", line_num, line));
             }
 
             // Show additions
-            for (i, line) in hunk.new.1.iter().enumerate() {
-                let line_num = hunk.new.0 + i as u32;
+            for (i, line) in hunk.new.lines.iter().enumerate() {
+                let line_num = hunk.new.start + i as u32;
                 result.push_str(&format!("  +{}:\t{}\n", line_num, line));
             }
 
