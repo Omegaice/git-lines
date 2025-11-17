@@ -7,6 +7,7 @@ authors = ["Omegaice"]
 description = "Non-interactive git hunk staging tool"
 license = "MIT"
 repository = "https://github.com/Omegaice/git-stager"
+homepage = "https://github.com/Omegaice/git-stager"
 readme = "README.md"
 keywords = ["git", "staging", "cli", "version-control", "diff"]
 categories = ["command-line-utilities", "development-tools"]
@@ -15,6 +16,10 @@ exclude = [
     "flake.nix",
     "flake.lock",
 ]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 clap = { version = "4.5.51", features = ["derive"] }
@@ -25,3 +30,21 @@ error_set = "0.9.0"
 git2 = "0.20.2"
 insta = { version = "1.43.2", features = ["json"] }
 tempfile = "3.23.0"
+
+[[bin]]
+name = "git-stager"
+path = "src/main.rs"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
