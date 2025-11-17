@@ -1,6 +1,0 @@
----
-source: src/diff.rs
-expression: formatted
----
-flake.nix:
-  +137:	      debug = true;

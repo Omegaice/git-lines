@@ -3,20 +3,17 @@ use std::process::Command;
 
 mod diff;
 mod parse;
-mod patch;
 
-pub use diff::{DiffError, format_diff_output};
 pub use parse::ParseError;
-pub use patch::PatchError;
 
 error_set! {
     /// Top-level error for git-stager operations
     GitStagerError := {
         #[display("No changes found in {file}")]
         NoChanges { file: String },
+        #[display("No matching lines found for {file}")]
+        NoMatchingLines { file: String },
         ParseError(ParseError),
-        DiffError(DiffError),
-        PatchError(PatchError),
     } || GitCommandError
 
     /// Errors from git command execution
@@ -77,7 +74,9 @@ impl<'a> GitStager<'a> {
     /// let diff = stager.diff(&["flake.nix".to_string()]).unwrap(); // specific file
     /// ```
     pub fn diff(&self, files: &[String]) -> Result<String, GitStagerError> {
-        Ok(diff::format_diff_output(&self.get_raw_diff(files)?)?)
+        let raw_diff = self.get_raw_diff(files)?;
+        let parsed = diff::Diff::parse(&raw_diff);
+        Ok(diff::format_diff(&parsed))
     }
 
     /// Get raw git diff output with zero context lines
@@ -123,11 +122,33 @@ impl<'a> GitStager<'a> {
             });
         }
 
-        Ok(self.apply_patch(&patch::build_patch(
-            &file_refs.file,
-            &diff::parse_diff(&diff_output)?.lines,
-            &file_refs.refs,
-        )?)?)
+        let full_diff = diff::Diff::parse(&diff_output);
+        let filtered = full_diff.retain(
+            |_path, old_line| {
+                file_refs.refs.iter().any(|r| match r {
+                    parse::LineRef::Delete(n) => *n == old_line,
+                    parse::LineRef::DeleteRange(start, end) => {
+                        old_line >= *start && old_line <= *end
+                    }
+                    parse::LineRef::Add(_) | parse::LineRef::AddRange(_, _) => false,
+                })
+            },
+            |_path, new_line| {
+                file_refs.refs.iter().any(|r| match r {
+                    parse::LineRef::Add(n) => *n == new_line,
+                    parse::LineRef::AddRange(start, end) => new_line >= *start && new_line <= *end,
+                    parse::LineRef::Delete(_) | parse::LineRef::DeleteRange(_, _) => false,
+                })
+            },
+        );
+
+        if filtered.files.is_empty() {
+            return Err(GitStagerError::NoMatchingLines {
+                file: file_refs.file.clone(),
+            });
+        }
+
+        Ok(self.apply_patch(&filtered.to_string())?)
     }
 
     /// Apply a patch to the git index

@@ -3,10 +3,10 @@ source: tests/e2e_test.rs
 expression: fixture.git_diff_cached_all()
 ---
 diff --git a/flake.nix b/flake.nix
-index 770badb..eee5d97 100644
+index 770badb..10ff3cf 100644
 --- a/flake.nix
 +++ b/flake.nix
 @@ -6,0 +7 @@ line 6
 +    determinate.url = "github:DeterminateSystems/determinate";
-@@ -141,0 +143 @@ line 141
+@@ -139,0 +141 @@ line 139
 +        ./flake-modules/home-manager.nix

@@ -1,6 +1,0 @@
----
-source: src/diff.rs
-expression: formatted
----
-zsh.nix:
-  -15:	      enableAutosuggestions = true;
