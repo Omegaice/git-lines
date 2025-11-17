@@ -136,6 +136,14 @@
                 inherit cargoArtifacts;
               }
             );
+
+            # Code coverage
+            git-stager-coverage = craneLib.cargoTarpaulin (
+              commonArgs
+              // {
+                inherit cargoArtifacts;
+              }
+            );
           };
 
           treefmt = {
