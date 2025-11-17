@@ -1,6 +1,6 @@
 ---
 source: tests/e2e_test.rs
-expression: staged
+expression: fixture.git_diff_cached_all()
 ---
 diff --git a/zsh.nix b/zsh.nix
 index f92d264..fd7cab8 100644

@@ -1,6 +1,6 @@
 ---
 source: tests/e2e_test.rs
-expression: staged
+expression: fixture.git_diff_cached_all()
 ---
 diff --git a/flake.nix b/flake.nix
 index 462392e..0b97d01 100644

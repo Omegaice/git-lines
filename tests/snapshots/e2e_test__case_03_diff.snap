@@ -1,0 +1,8 @@
+---
+source: tests/e2e_test.rs
+expression: "fixture.stager.diff(&[\"default.nix\".to_string()]).unwrap()"
+---
+default.nix:
+  +40:	        # Allow Stylix to override terminal font
+  +41:	        "terminal.integrated.fontFamily" = lib.mkDefault "monospace";
+  +42:	        "direnv.restart.automatic" = true;

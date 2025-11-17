@@ -1,0 +1,8 @@
+---
+source: tests/e2e_test.rs
+expression: "fixture.stager.diff(&[\"zsh.nix\".to_string()]).unwrap()"
+---
+zsh.nix:
+  -15:	      enableAutosuggestions = true;
+  -16:	      enableCompletion = true;
+  -17:	      enableSyntaxHighlighting = true;
