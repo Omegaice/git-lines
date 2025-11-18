@@ -107,6 +107,21 @@
             commonArgs
             // {
               inherit cargoArtifacts;
+
+              # Install man page and shell completions
+              nativeBuildInputs = commonArgs.nativeBuildInputs ++ [ pkgs.installShellFiles ];
+
+              postInstall = ''
+                # Generate and install man page
+                $out/bin/git-stager man > git-stager.1
+                installManPage git-stager.1
+
+                # Generate and install shell completions
+                installShellCompletion --cmd git-stager \
+                  --bash <($out/bin/git-stager completions bash) \
+                  --fish <($out/bin/git-stager completions fish) \
+                  --zsh <($out/bin/git-stager completions zsh)
+              '';
             }
           );
         in

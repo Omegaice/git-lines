@@ -1,7 +1,6 @@
-#![allow(missing_docs)]
-
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
+use clap_mangen::Man;
 use git_stager::GitStager;
 use std::io;
 
@@ -95,6 +94,18 @@ enum Commands {
         /// The shell to generate completions for
         shell: Shell,
     },
+    /// Generate man page
+    ///
+    /// Install the man page:
+    ///
+    ///   git-stager man > git-stager.1
+    ///   sudo mv git-stager.1 /usr/local/share/man/man1/
+    ///   sudo mandb
+    ///
+    /// Then view with:
+    ///   man git-stager
+    #[command(verbatim_doc_comment)]
+    Man,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -104,6 +115,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             generate(shell, &mut cmd, "git-stager", &mut io::stdout());
+        }
+        Commands::Man => {
+            let cmd = Cli::command();
+            let man = Man::new(cmd);
+            man.render(&mut io::stdout())?;
         }
         Commands::Stage { file_refs } => {
             let repo_path = cli.path.as_deref().unwrap_or(".");
