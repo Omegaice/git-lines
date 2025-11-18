@@ -1,12 +1,20 @@
 use super::file::FileDiff;
 
-/// A complete git diff containing changes for multiple files
+/// A complete git diff containing changes for multiple files.
+///
+/// This is the top-level structure representing the full output of `git diff`.
 pub struct Diff {
+    /// All file diffs in this git diff
     pub files: Vec<FileDiff>,
 }
 
 impl Diff {
-    /// Parse a complete git diff output into file diffs
+    /// Parse a complete git diff output into file diffs.
+    ///
+    /// Splits the input by `diff --git` markers and parses each section
+    /// as a [`FileDiff`].
+    ///
+    /// Files that fail to parse are silently skipped.
     pub fn parse(text: &str) -> Self {
         let mut files = Vec::new();
         let mut current_file_text = String::new();
@@ -38,6 +46,37 @@ impl Diff {
     }
 
     /// Filter lines across all files, returning a new Diff with only matching lines.
+    ///
+    /// This is the main filtering method used by git-stager to select specific lines
+    /// for staging.
+    ///
+    /// # Parameters
+    ///
+    /// - `keep_old`: Predicate for deletions. Called with `(file_path, old_line_number)`.
+    /// - `keep_new`: Predicate for additions. Called with `(file_path, new_line_number)`.
+    ///
+    /// # Returns
+    ///
+    /// A new `Diff` containing only:
+    /// - Files that had matching lines
+    /// - Hunks within those files that had matching lines
+    /// - Lines within those hunks that matched the predicates
+    ///
+    /// Files and hunks with no matches are omitted entirely.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use git_stager::diff::Diff;
+    ///
+    /// let diff = Diff::parse("...git diff output...");
+    ///
+    /// // Keep only line 137 from flake.nix
+    /// let filtered = diff.retain(
+    ///     |_, _| false,
+    ///     |path, line| path == "flake.nix" && line == 137
+    /// );
+    /// ```
     pub fn retain<F, G>(&self, mut keep_old: F, mut keep_new: G) -> Self
     where
         F: FnMut(&str, u32) -> bool,

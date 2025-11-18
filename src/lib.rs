@@ -1,39 +1,107 @@
-#![allow(missing_docs)]
+//! Line-level git staging tool for fine-grained commit control.
+//!
+//! `git-stager` enables staging individual changed lines when git's hunks are too coarse.
+//! This fills the gap left by `git add -p` which requires interactive input and cannot be
+//! used by automation or LLMs.
+//!
+//! # Overview
+//!
+//! Git's interactive staging (`git add -p`) works at the hunk level - contiguous blocks of
+//! changes. When multiple unrelated changes exist in the same hunk, you cannot separate them
+//! for different commits. This tool allows line-level precision.
+//!
+//! # Workflow
+//!
+//! 1. Use [`GitStager::diff`] to see line numbers for all unstaged changes
+//! 2. Use [`GitStager::stage`] to select specific lines by number
+//! 3. Create commits with `git commit` as usual
+//!
+//! # Examples
+//!
+//! ```no_run
+//! use git_stager::GitStager;
+//!
+//! let stager = GitStager::new(".");
+//!
+//! // View changes with line numbers
+//! let diff = stager.diff(&[]).unwrap();
+//! println!("{}", diff);
+//!
+//! // Stage specific lines
+//! stager.stage("flake.nix:137").unwrap();           // Single addition
+//! stager.stage("file.nix:10..15").unwrap();         // Range of additions
+//! stager.stage("zsh.nix:-15").unwrap();             // Single deletion
+//! stager.stage("config.nix:-10,-11,12").unwrap();   // Mixed operations
+//! ```
+//!
+//! # Line Reference Syntax
+//!
+//! - `N` - Stage addition at new line N
+//! - `-N` - Stage deletion of old line N
+//! - `N..M` - Stage range of additions (inclusive)
+//! - `-N..-M` - Stage range of deletions (inclusive)
+//! - `A,B,C` - Combine multiple line references
+//!
+//! # Architecture
+//!
+//! The crate is organized into focused modules:
+//!
+//! - [`parse`] - Parse `file:refs` syntax into structured line references
+//! - [`diff`] - Parse and manipulate git diff output
+//! - [`GitStager`] - Main API for staging operations
+//!
+//! # Use Cases
+//!
+//! - **Semantic commits**: Group related changes scattered across a file
+//! - **Incremental refactoring**: Stage bug fixes separately from style changes
+//! - **LLM workflows**: Enable automated staging based on change semantics
+//! - **Code review**: Stage reviewer suggestions line-by-line
 
 use error_set::error_set;
 use std::process::Command;
 
-mod diff;
-mod parse;
+pub mod diff;
+pub mod parse;
 
 pub use parse::ParseError;
 
 error_set! {
     /// Top-level error for git-stager operations
     GitStagerError := {
+        /// No unstaged changes found in the specified file
         #[display("No changes found in {file}")]
         NoChanges { file: String },
+        /// No lines matched the specified line references
         #[display("No matching lines found for {file}")]
         NoMatchingLines { file: String },
+        /// Error parsing the file:refs syntax
         ParseError(ParseError),
     } || GitCommandError
 
     /// Errors from git command execution
     GitCommandError := {
+        /// Failed to execute the git diff command
         #[display("Failed to run git diff: {message}")]
         DiffFailed { message: String },
+        /// Git diff command exited with non-zero status
         #[display("git diff failed: {stderr}")]
         DiffExitError { stderr: String },
+        /// Git diff output contained invalid UTF-8
         #[display("Invalid UTF-8 in git diff output: {message}")]
         InvalidUtf8 { message: String },
+        /// Failed to spawn the git apply process
         #[display("Failed to spawn git apply: {message}")]
         ApplySpawnFailed { message: String },
+        /// Failed to obtain stdin handle for git apply
         #[display("Failed to get stdin handle for git apply")]
         ApplyStdinFailed,
+        /// Failed to write patch data to git apply stdin
         #[display("Failed to write patch to git apply: {message}")]
         ApplyWriteFailed { message: String },
+        /// Failed to wait for git apply to complete
         #[display("Failed to wait for git apply: {message}")]
         ApplyWaitFailed { message: String },
+        /// Git apply command exited with non-zero status
         #[display("git apply failed: {stderr}")]
         ApplyExitError { stderr: String },
     }

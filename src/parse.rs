@@ -1,46 +1,127 @@
+//! Parsing for file:refs syntax into structured line references.
+//!
+//! This module handles parsing user input like `file.nix:10,15,-20` into
+//! structured [`FileLineRefs`] that can be used to filter git diffs.
+//!
+//! # Syntax
+//!
+//! The expected format is `FILE:REFS` where:
+//! - `FILE` is a file path (cannot be empty)
+//! - `REFS` is a comma-separated list of line references
+//!
+//! # Line Reference Types
+//!
+//! - `N` - Addition at new line N
+//! - `-N` - Deletion at old line N
+//! - `N..M` - Range of additions (inclusive)
+//! - `-N..-M` - Range of deletions (inclusive)
+//!
+//! # Examples
+//!
+//! ```
+//! use git_stager::parse::{parse_file_refs, LineRef};
+//!
+//! // Single addition
+//! let refs = parse_file_refs("flake.nix:137").unwrap();
+//! assert_eq!(refs.file, "flake.nix");
+//! assert_eq!(refs.refs, vec![LineRef::Add(137)]);
+//!
+//! // Range
+//! let refs = parse_file_refs("config.nix:10..15").unwrap();
+//! assert_eq!(refs.refs, vec![LineRef::AddRange(10, 15)]);
+//!
+//! // Mixed operations
+//! let refs = parse_file_refs("file.nix:-10,12").unwrap();
+//! assert_eq!(refs.refs, vec![LineRef::Delete(10), LineRef::Add(12)]);
+//! ```
+
 use error_set::error_set;
 
 error_set! {
     /// Errors from parsing file:refs syntax
     ParseError := {
+        /// Input string does not contain a colon separator
         #[display("Invalid format '{input}': expected 'file:refs'")]
         InvalidFormat { input: String },
+        /// File name portion before the colon is empty or whitespace
         #[display("Invalid format '{input}': file name cannot be empty")]
         EmptyFileName { input: String },
+        /// No line references provided after the colon
         #[display("No line references provided")]
         EmptyRefs,
+        /// Line number could not be parsed as a valid u32
         #[display("Invalid line number '{value}'")]
         InvalidLineNumber { value: String },
+        /// Deletion reference does not start with '-' prefix
         #[display("Delete reference must start with '-', got '{value}'")]
         InvalidDeleteRef { value: String },
     }
 }
 
-/// A reference to specific lines to stage
+/// A reference to specific lines to stage.
+///
+/// Line references specify which lines from a git diff should be staged.
+/// Additions reference new line numbers, deletions reference old line numbers.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LineRef {
     /// Addition at new line number
     Add(u32),
-    /// Addition range (inclusive)
+    /// Addition range (inclusive start and end)
     AddRange(u32, u32),
     /// Deletion at old line number
     Delete(u32),
-    /// Deletion range (inclusive)
+    /// Deletion range (inclusive start and end)
     DeleteRange(u32, u32),
 }
 
-/// Parsed file reference with line selections
+/// Parsed file reference with line selections.
+///
+/// Represents the structured form of a `file:refs` string after parsing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FileLineRefs {
+    /// The file path
     pub file: String,
+    /// The line references to stage from this file
     pub refs: Vec<LineRef>,
 }
 
-/// Parse a file:refs string into structured data
-/// Examples:
-/// - "flake.nix:137" -> FileLineRefs { file: "flake.nix", refs: [Add(137)] }
-/// - "file.nix:10..15" -> FileLineRefs { file: "file.nix", refs: [AddRange(10, 15)] }
-/// - "file.nix:10,15,-20" -> FileLineRefs { file: "file.nix", refs: [Add(10), Add(15), Delete(20)] }
+/// Parse a file:refs string into structured data.
+///
+/// # Format
+///
+/// `FILE:REFS` where REFS is a comma-separated list of:
+/// - `N` - Addition at line N
+/// - `-N` - Deletion of line N
+/// - `N..M` - Addition range
+/// - `-N..-M` - Deletion range
+///
+/// # Examples
+///
+/// ```
+/// use git_stager::parse::{parse_file_refs, LineRef};
+///
+/// let refs = parse_file_refs("flake.nix:137").unwrap();
+/// assert_eq!(refs.file, "flake.nix");
+/// assert_eq!(refs.refs, vec![LineRef::Add(137)]);
+///
+/// let refs = parse_file_refs("file.nix:10..15").unwrap();
+/// assert_eq!(refs.refs, vec![LineRef::AddRange(10, 15)]);
+///
+/// let refs = parse_file_refs("file.nix:10,15,-20").unwrap();
+/// assert_eq!(refs.refs, vec![
+///     LineRef::Add(10),
+///     LineRef::Add(15),
+///     LineRef::Delete(20)
+/// ]);
+/// ```
+///
+/// # Errors
+///
+/// Returns [`ParseError`] if:
+/// - Input doesn't contain `:` separator
+/// - File name is empty or whitespace
+/// - No line references provided
+/// - Line numbers are invalid
 pub fn parse_file_refs(input: &str) -> Result<FileLineRefs, ParseError> {
     let parts: Vec<&str> = input.splitn(2, ':').collect();
     if parts.len() != 2 {

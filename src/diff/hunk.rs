@@ -1,22 +1,49 @@
 use std::fmt;
 
-/// Lines modified in the old or new version
+/// Lines modified in the old or new version of a file.
+///
+/// Represents either deletions (old lines) or additions (new lines) within a hunk.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ModifiedLines {
+    /// Starting line number (1-indexed)
     pub start: u32,
+    /// The actual line content (without +/- prefix)
     pub lines: Vec<String>,
+    /// Whether the last line lacks a trailing newline
     pub missing_final_newline: bool,
 }
 
-/// A single hunk from a git diff
+/// A single hunk from a git diff.
+///
+/// A hunk represents one contiguous block of changes in a file. With `-U0`
+/// (zero context lines), each hunk contains only modified lines with no
+/// surrounding context.
+///
+/// # Structure
+///
+/// - `old`: Lines that were deleted (prefixed with `-` in diff)
+/// - `new`: Lines that were added (prefixed with `+` in diff)
+///
+/// # Hunk Types
+///
+/// - Pure addition: `old.lines` is empty
+/// - Pure deletion: `new.lines` is empty
+/// - Replacement: Both `old` and `new` have lines
 #[derive(Debug, PartialEq, Eq)]
 pub struct Hunk {
+    /// Lines from the old version (deletions)
     pub old: ModifiedLines,
+    /// Lines from the new version (additions)
     pub new: ModifiedLines,
 }
 
 impl Hunk {
-    /// Parse a hunk from diff text (header + content lines)
+    /// Parse a hunk from diff text (header + content lines).
+    ///
+    /// Expects text starting with `@@ -old +new @@` header followed by
+    /// content lines prefixed with `-`, `+`, or `\` (for no-newline marker).
+    ///
+    /// Returns `None` if parsing fails.
     pub fn parse(text: &str) -> Option<Self> {
         let mut lines = text.lines();
 
@@ -70,8 +97,29 @@ impl Hunk {
         })
     }
 
-    /// Filter lines in the hunk, returning a new valid hunk with only matching lines.
-    /// Returns None if no lines match.
+    /// Filter lines in the hunk, returning a new hunk with only matching lines.
+    ///
+    /// # Parameters
+    ///
+    /// - `keep_old`: Predicate for old lines (deletions). Called with old line number.
+    /// - `keep_new`: Predicate for new lines (additions). Called with new line number.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(Hunk)` with only the lines where predicates returned `true`
+    /// - `None` if no lines matched either predicate
+    ///
+    /// # Line Number Recalculation
+    ///
+    /// When filtering to pure additions (no deletions kept), the new start position
+    /// is recalculated as `old_start + 1` since the insertion appears right after
+    /// the old position.
+    ///
+    /// # No-Newline Bridge Synthesis
+    ///
+    /// If the old lines had no trailing newline and you're keeping additions after it,
+    /// the method automatically includes the old deletion to provide the required
+    /// newline separator. This prevents corrupted git index state.
     pub fn retain<F, G>(&self, mut keep_old: F, mut keep_new: G) -> Option<Self>
     where
         F: FnMut(u32) -> bool,

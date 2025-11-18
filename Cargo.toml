@@ -42,7 +42,6 @@ codegen-units = 1
 
 [lints.rust]
 unsafe_code = "forbid"
-missing_docs = "warn"
 
 [lints.clippy]
 unwrap_used = "warn"

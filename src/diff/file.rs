@@ -1,14 +1,22 @@
 use super::hunk::Hunk;
 use std::fmt;
 
-/// A complete diff for a single file
+/// A complete diff for a single file.
+///
+/// Contains all hunks (change blocks) for one file from a git diff.
 pub struct FileDiff {
+    /// File path (extracted from `+++ b/path` header)
     pub path: String,
+    /// All hunks for this file
     pub hunks: Vec<Hunk>,
 }
 
 impl FileDiff {
-    /// Parse a single-file diff from git diff output
+    /// Parse a single-file diff from git diff output.
+    ///
+    /// Expects input starting with `diff --git` and containing `+++ b/path` header.
+    ///
+    /// Returns `None` if the file path cannot be extracted.
     pub fn parse(text: &str) -> Option<Self> {
         let mut lines = text.lines().peekable();
         let mut path = String::new();
@@ -57,7 +65,18 @@ impl FileDiff {
     }
 
     /// Filter lines across all hunks, returning a new FileDiff with only matching lines.
-    /// Returns None if no lines match in any hunk.
+    ///
+    /// Applies the predicates to every line across all hunks in the file.
+    ///
+    /// # Parameters
+    ///
+    /// - `keep_old`: Predicate for deletions (old line numbers)
+    /// - `keep_new`: Predicate for additions (new line numbers)
+    ///
+    /// # Returns
+    ///
+    /// - `Some(FileDiff)` containing only hunks with matching lines
+    /// - `None` if no lines matched in any hunk
     pub fn retain<F, G>(&self, mut keep_old: F, mut keep_new: G) -> Option<Self>
     where
         F: FnMut(u32) -> bool,
