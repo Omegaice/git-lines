@@ -4,6 +4,7 @@ use std::fmt;
 /// A complete diff for a single file.
 ///
 /// Contains all hunks (change blocks) for one file from a git diff.
+#[derive(Debug, PartialEq, Eq)]
 pub struct FileDiff {
     /// File path (extracted from `+++ b/path` header)
     pub path: String,
@@ -339,6 +340,86 @@ index fa2da6e..41114ff 100644
             filtered.to_string(),
             "--- a/config.nix\n+++ b/config.nix\n@@ -8,0 +9 @@\n+# SECOND\n"
         );
+    }
+
+    #[test]
+    fn retain_from_multiple_hunks_adjusts_line_numbers() {
+        // When filtering lines from multiple hunks, later hunks' new_start positions
+        // must account for the net line changes from earlier filtered hunks.
+        //
+        // Scenario: Two insertion hunks in a file
+        // - Hunk 1: Inserts 2 lines after old line 3 (new lines 4-5)
+        // - Hunk 2: Inserts 2 lines after old line 7 (new lines 10-11)
+        //   Note: new_start is 10, not 8, because hunk 1 added 2 lines
+        //
+        // When we keep only line 4 from hunk 1 and line 10 from hunk 2:
+        // - Hunk 1 now adds 1 line instead of 2 (net change: -1)
+        // - Hunk 2's new_start must adjust: 10 - 1 = 9
+        let file_diff = FileDiff {
+            path: "test.txt".to_string(),
+            hunks: vec![
+                Hunk {
+                    old: ModifiedLines {
+                        start: 3,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                    new: ModifiedLines {
+                        start: 4,
+                        lines: vec!["NEW 1".to_string(), "NEW 2".to_string()],
+                        missing_final_newline: false,
+                    },
+                },
+                Hunk {
+                    old: ModifiedLines {
+                        start: 7,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                    new: ModifiedLines {
+                        start: 10,
+                        lines: vec!["NEW 3".to_string(), "NEW 4".to_string()],
+                        missing_final_newline: false,
+                    },
+                },
+            ],
+        };
+
+        let filtered = file_diff.retain(|_| false, |n| n == 4 || n == 10).unwrap();
+
+        // Expected result: Both hunks filtered, with hunk 2's new_start adjusted
+        // to account for the reduced line count from hunk 1
+        let expected = FileDiff {
+            path: "test.txt".to_string(),
+            hunks: vec![
+                Hunk {
+                    old: ModifiedLines {
+                        start: 3,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                    new: ModifiedLines {
+                        start: 4,
+                        lines: vec!["NEW 1".to_string()],
+                        missing_final_newline: false,
+                    },
+                },
+                Hunk {
+                    old: ModifiedLines {
+                        start: 7,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                    new: ModifiedLines {
+                        start: 9, // Adjusted from 10: accounts for 1 line from hunk 1 instead of 2
+                        lines: vec!["NEW 3".to_string()],
+                        missing_final_newline: false,
+                    },
+                },
+            ],
+        };
+
+        assert_eq!(filtered, expected);
     }
 
     #[test]
