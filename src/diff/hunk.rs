@@ -305,6 +305,7 @@ impl fmt::Display for Hunk {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use similar_asserts::assert_eq;
 
     #[test]
     fn render_pure_insertion() {

@@ -112,6 +112,7 @@ impl std::fmt::Display for Diff {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use similar_asserts::assert_eq;
 
     #[test]
     fn parse_empty_diff() {

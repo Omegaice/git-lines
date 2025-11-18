@@ -117,6 +117,7 @@ impl fmt::Display for FileDiff {
 mod tests {
     use super::*;
     use crate::diff::hunk::ModifiedLines;
+    use similar_asserts::assert_eq;
 
     #[test]
     fn parse_single_hunk() {

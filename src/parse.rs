@@ -210,6 +210,7 @@ fn parse_delete_number(input: &str) -> Result<u32, ParseError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use similar_asserts::assert_eq;
 
     #[test]
     fn parse_single_addition() {
