@@ -126,6 +126,7 @@ fn parse_delete_number(input: &str) -> Result<u32, ParseError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

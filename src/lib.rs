@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use error_set::error_set;
 use std::process::Command;
 

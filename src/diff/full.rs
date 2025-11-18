@@ -70,6 +70,7 @@ impl std::fmt::Display for Diff {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

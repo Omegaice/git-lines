@@ -94,6 +94,7 @@ impl fmt::Display for FileDiff {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::diff::hunk::ModifiedLines;

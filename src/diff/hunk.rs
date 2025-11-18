@@ -128,10 +128,10 @@ impl Hunk {
         if self.old.missing_final_newline
             && !new_new_lines.is_empty()
             && !kept_first_new
-            && !self.old.lines.is_empty()
+            && let Some(last_old_line) = self.old.lines.last()
         {
             // Force-include the last old deletion
-            let last_old_line = self.old.lines.last().unwrap().clone();
+            let last_old_line = last_old_line.clone();
             let last_old_line_num = self.old.start + old_last_idx as u32;
             if !kept_last_old {
                 new_old_lines.push(last_old_line.clone());
@@ -254,6 +254,7 @@ impl fmt::Display for Hunk {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

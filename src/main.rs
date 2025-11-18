@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use git_stager::GitStager;

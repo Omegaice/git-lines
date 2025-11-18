@@ -1,3 +1,7 @@
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+#![allow(missing_docs)]
+
 use git_stager::GitStager;
 use git2::{Repository, Signature};
 use std::{fs, path::Path, process::Command};
