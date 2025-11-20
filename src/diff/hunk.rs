@@ -1,3 +1,11 @@
+use nom::{
+    IResult, Parser,
+    bytes::complete::{tag, take_until},
+    character::complete::{digit1, line_ending, not_line_ending},
+    combinator::{map_res, opt, value},
+    multi::fold_many0,
+    sequence::{delimited, pair, preceded, separated_pair, terminated},
+};
 use std::fmt;
 
 /// Lines modified in the old or new version of a file.
@@ -45,56 +53,7 @@ impl Hunk {
     ///
     /// Returns `None` if parsing fails.
     pub fn parse(text: &str) -> Option<Self> {
-        let mut lines = text.lines();
-
-        // Parse header
-        let header = lines.next()?;
-        let (old_start, new_start) = Self::parse_header(header)?;
-
-        let mut old_lines = Vec::new();
-        let mut new_lines = Vec::new();
-        let mut old_missing_newline = false;
-        let mut new_missing_newline = false;
-
-        // Track what type of line we last saw (for "\ No newline" marker)
-        enum LastLineType {
-            None,
-            Old,
-            New,
-        }
-        let mut last_line_type = LastLineType::None;
-
-        // Parse content lines
-        for line in lines {
-            if line.starts_with("\\ No newline at end of file") {
-                // This marker applies to whichever line type we saw last
-                match last_line_type {
-                    LastLineType::Old => old_missing_newline = true,
-                    LastLineType::New => new_missing_newline = true,
-                    LastLineType::None => {}
-                }
-            } else if let Some(content) = line.strip_prefix('-') {
-                old_lines.push(content.to_string());
-                last_line_type = LastLineType::Old;
-            } else if let Some(content) = line.strip_prefix('+') {
-                new_lines.push(content.to_string());
-                last_line_type = LastLineType::New;
-            }
-            // Ignore context lines (shouldn't have any with -U0)
-        }
-
-        Some(Hunk {
-            old: ModifiedLines {
-                start: old_start,
-                lines: old_lines,
-                missing_final_newline: old_missing_newline,
-            },
-            new: ModifiedLines {
-                start: new_start,
-                lines: new_lines,
-                missing_final_newline: new_missing_newline,
-            },
-        })
+        parse_hunk(text).ok().map(|(_, hunk)| hunk)
     }
 
     /// Filter lines in the hunk, returning a new hunk with only matching lines.
@@ -120,148 +79,238 @@ impl Hunk {
     /// If the old lines had no trailing newline and you're keeping additions after it,
     /// the method automatically includes the old deletion to provide the required
     /// newline separator. This prevents corrupted git index state.
-    pub fn retain<F, G>(&self, mut keep_old: F, mut keep_new: G) -> Option<Self>
+    pub fn retain<F, G>(&self, keep_old: F, keep_new: G) -> Option<Self>
     where
         F: FnMut(u32) -> bool,
         G: FnMut(u32) -> bool,
     {
-        // Filter old (deletion) lines
-        let mut new_old_lines = Vec::new();
-        let mut new_old_start = None;
-        let mut kept_last_old = false;
-        let old_last_idx = self.old.lines.len().saturating_sub(1);
-        for (i, line) in self.old.lines.iter().enumerate() {
-            let line_num = self.old.start + i as u32;
-            if keep_old(line_num) {
-                if new_old_start.is_none() {
-                    new_old_start = Some(line_num);
-                }
-                new_old_lines.push(line.clone());
-                if i == old_last_idx {
-                    kept_last_old = true;
-                }
-            }
-        }
+        // Phase 1: Filter lines
+        let mut old_filtered = filter_lines(&self.old, keep_old);
+        let mut new_filtered = filter_lines(&self.new, keep_new);
 
-        // Filter new (addition) lines
-        let mut new_new_lines = Vec::new();
-        let mut new_new_start = None;
-        let mut kept_last_new = false;
-        let mut kept_first_new = false;
-        let new_last_idx = self.new.lines.len().saturating_sub(1);
-        for (i, line) in self.new.lines.iter().enumerate() {
-            let line_num = self.new.start + i as u32;
-            if keep_new(line_num) {
-                if new_new_start.is_none() {
-                    new_new_start = Some(line_num);
-                }
-                new_new_lines.push(line.clone());
-                if i == 0 {
-                    kept_first_new = true;
-                }
-                if i == new_last_idx {
-                    kept_last_new = true;
-                }
-            }
-        }
-
-        // If nothing matched, return None
-        if new_old_lines.is_empty() && new_new_lines.is_empty() {
+        if old_filtered.is_empty() && new_filtered.is_empty() {
             return None;
         }
 
-        // Handle no-newline bridge: if old line had no trailing newline and we're
-        // adding lines after it, we must include the old deletion and synthesize
-        // the first addition to provide the \n separator
-        if self.old.missing_final_newline
-            && !new_new_lines.is_empty()
-            && !kept_first_new
-            && let Some(last_old_line) = self.old.lines.last()
-        {
-            // Force-include the last old deletion
-            let last_old_line = last_old_line.clone();
-            let last_old_line_num = self.old.start + old_last_idx as u32;
-            if !kept_last_old {
-                new_old_lines.push(last_old_line.clone());
-                if new_old_start.is_none() {
-                    new_old_start = Some(last_old_line_num);
-                }
-                kept_last_old = true;
-            }
-
-            // Synthesize first addition as copy of old content (provides \n)
-            new_new_lines.insert(0, last_old_line);
-            new_new_start = Some(self.new.start);
+        // Phase 2: Insert separator if needed
+        // When the original last line had no newline and we're adding content after it,
+        // we must include that line (deleted then re-added) to provide line separation
+        if requires_line_separator(&self.old, &new_filtered) {
+            insert_line_separator(&self.old, &mut old_filtered, &mut new_filtered);
         }
 
-        // Determine final start positions
-        // Key insight: preserve original positions from the hunk when possible
-        let final_old_start = match new_old_start {
-            Some(old) => old,
-            None => self.old.start, // No deletions kept, use original position
+        // Phase 3: Calculate positions based on change type
+        let old_start = old_filtered.first_line_num.unwrap_or(self.old.start);
+
+        let new_start = match change_type(&old_filtered, &new_filtered) {
+            ChangeType::PureInsertion => old_start + 1,
+            ChangeType::PureDeletion => old_start,
+            ChangeType::Mixed => new_filtered.first_line_num.unwrap_or(self.new.start),
         };
 
-        // For new_start: if we have no deletions, we must recalculate
-        // because the original new_start assumed other changes happened
-        let final_new_start = if new_old_lines.is_empty() && !new_new_lines.is_empty() {
-            // Pure insertion: new content appears right after old_start
-            final_old_start + 1
-        } else if !new_old_lines.is_empty() && new_new_lines.is_empty() {
-            // Pure deletion: result line number is where the gap appears
-            final_old_start
-        } else {
-            // Mixed or empty: use the actual new line number
-            match new_new_start {
-                Some(new) => new,
-                None => self.new.start,
-            }
-        };
-
-        // Preserve missing_final_newline only if we kept the original last line
-        let old_missing = kept_last_old && self.old.missing_final_newline;
-        let new_missing = kept_last_new && self.new.missing_final_newline;
-
+        // Phase 4: Assemble result
         Some(Hunk {
             old: ModifiedLines {
-                start: final_old_start,
-                lines: new_old_lines,
-                missing_final_newline: old_missing,
+                start: old_start,
+                lines: old_filtered.lines,
+                missing_final_newline: old_filtered.kept_last_boundary
+                    && self.old.missing_final_newline,
             },
             new: ModifiedLines {
-                start: final_new_start,
-                lines: new_new_lines,
-                missing_final_newline: new_missing,
+                start: new_start,
+                lines: new_filtered.lines,
+                missing_final_newline: new_filtered.kept_last_boundary
+                    && self.new.missing_final_newline,
             },
         })
     }
+}
 
-    /// Parse hunk header to extract old and new start positions
-    fn parse_header(header: &str) -> Option<(u32, u32)> {
-        let header = header.strip_prefix("@@ ")?;
-        let end_idx = header.find(" @@")?;
-        let range_part = &header[..end_idx];
+/// Result of filtering lines, tracking boundary alignment with the original
+struct FilterResult {
+    lines: Vec<String>,
+    first_line_num: Option<u32>,
+    kept_first_boundary: bool,
+    kept_last_boundary: bool,
+}
 
-        let parts: Vec<&str> = range_part.split(' ').collect();
-        if parts.len() != 2 {
-            return None;
+impl FilterResult {
+    fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
+}
+
+/// Filter lines from a ModifiedLines based on a predicate
+fn filter_lines<F>(source: &ModifiedLines, mut keep: F) -> FilterResult
+where
+    F: FnMut(u32) -> bool,
+{
+    let mut result = FilterResult {
+        lines: Vec::new(),
+        first_line_num: None,
+        kept_first_boundary: false,
+        kept_last_boundary: false,
+    };
+
+    let last_idx = source.lines.len().saturating_sub(1);
+
+    for (i, line) in source.lines.iter().enumerate() {
+        let line_num = source.start + i as u32;
+        if keep(line_num) {
+            if result.first_line_num.is_none() {
+                result.first_line_num = Some(line_num);
+            }
+            result.lines.push(line.clone());
+            if i == 0 {
+                result.kept_first_boundary = true;
+            }
+            if i == last_idx {
+                result.kept_last_boundary = true;
+            }
         }
-
-        let old_start = Self::parse_range_start(parts[0].strip_prefix('-').unwrap_or(parts[0]))?;
-        let new_start = Self::parse_range_start(parts[1].strip_prefix('+').unwrap_or(parts[1]))?;
-
-        Some((old_start, new_start))
     }
 
-    /// Parse the start line number from a range like "136,0" or "137"
-    fn parse_range_start(range: &str) -> Option<u32> {
-        let num_str = if let Some(idx) = range.find(',') {
-            &range[..idx]
-        } else {
-            range
-        };
+    result
+}
 
-        num_str.parse::<u32>().ok()
+/// Check if we need to insert a line separator
+///
+/// This occurs when: the original deletions had no trailing newline,
+/// we have additions to keep, but we didn't keep the first addition.
+/// Without the separator, new content would concatenate onto the previous line.
+fn requires_line_separator(old_source: &ModifiedLines, new_filtered: &FilterResult) -> bool {
+    old_source.missing_final_newline
+        && !new_filtered.is_empty()
+        && !new_filtered.kept_first_boundary
+}
+
+/// Insert a line separator by including bridge content
+///
+/// Forces inclusion of the last deletion (if not already kept) and
+/// synthesizes the first addition with the same content, providing
+/// the newline that separates subsequent additions.
+fn insert_line_separator(
+    old_source: &ModifiedLines,
+    old_filtered: &mut FilterResult,
+    new_filtered: &mut FilterResult,
+) {
+    let Some(last_old_line) = old_source.lines.last() else {
+        return;
+    };
+
+    // Include the last deletion if not already kept
+    if !old_filtered.kept_last_boundary {
+        let last_idx = old_source.lines.len() - 1;
+        let last_line_num = old_source.start + last_idx as u32;
+
+        old_filtered.lines.push(last_old_line.clone());
+        if old_filtered.first_line_num.is_none() {
+            old_filtered.first_line_num = Some(last_line_num);
+        }
+        old_filtered.kept_last_boundary = true;
     }
+
+    // Synthesize the first addition with the old content (provides the newline)
+    new_filtered.lines.insert(0, last_old_line.clone());
+    new_filtered.first_line_num = Some(old_source.start + old_source.lines.len() as u32);
+    new_filtered.kept_first_boundary = true;
+}
+
+/// The type of change after filtering
+enum ChangeType {
+    PureInsertion,
+    PureDeletion,
+    Mixed,
+}
+
+/// Determine what type of change the filtered result represents
+fn change_type(old_filtered: &FilterResult, new_filtered: &FilterResult) -> ChangeType {
+    match (old_filtered.is_empty(), new_filtered.is_empty()) {
+        (true, false) => ChangeType::PureInsertion,
+        (false, true) => ChangeType::PureDeletion,
+        _ => ChangeType::Mixed,
+    }
+}
+
+// Nom parser combinators for hunk parsing
+
+fn header_marker(input: &str) -> IResult<&str, &str> {
+    delimited(tag("@@ "), take_until(" @@"), tag(" @@")).parse(input)
+}
+
+fn header_range(input: &str) -> IResult<&str, u32> {
+    map_res(
+        pair(digit1, opt(preceded(tag(","), digit1))),
+        |(start, _count): (&str, Option<&str>)| start.parse::<u32>(),
+    )
+    .parse(input)
+}
+
+fn hunk_header(input: &str) -> IResult<&str, (u32, u32)> {
+    let (rest, inner) = header_marker(input)?;
+    let (_, (old_start, new_start)) = separated_pair(
+        preceded(tag("-"), header_range),
+        tag(" "),
+        preceded(tag("+"), header_range),
+    )
+    .parse(inner)?;
+    Ok((rest, (old_start, new_start)))
+}
+
+fn deletion_line(input: &str) -> IResult<&str, &str> {
+    preceded(tag("-"), terminated(not_line_ending, opt(line_ending))).parse(input)
+}
+
+fn addition_line(input: &str) -> IResult<&str, &str> {
+    preceded(tag("+"), terminated(not_line_ending, opt(line_ending))).parse(input)
+}
+
+fn no_newline_marker(input: &str) -> IResult<&str, bool> {
+    value(
+        true,
+        pair(tag("\\ No newline at end of file"), opt(line_ending)),
+    )
+    .parse(input)
+}
+
+fn parse_hunk(input: &str) -> IResult<&str, Hunk> {
+    // Parse header
+    let (rest, (old_start, new_start)) =
+        terminated(hunk_header, pair(not_line_ending, line_ending)).parse(input)?;
+
+    // Collect deletions
+    let (rest, old_lines) = fold_many0(deletion_line, Vec::new, |mut acc, line| {
+        acc.push(line.into());
+        acc
+    })
+    .parse(rest)?;
+
+    let (rest, old_no_newline) = opt(no_newline_marker).parse(rest)?;
+
+    // Collect additions
+    let (rest, new_lines) = fold_many0(addition_line, Vec::new, |mut acc, line| {
+        acc.push(line.into());
+        acc
+    })
+    .parse(rest)?;
+
+    let (rest, new_no_newline) = opt(no_newline_marker).parse(rest)?;
+
+    Ok((
+        rest,
+        Hunk {
+            old: ModifiedLines {
+                start: old_start,
+                lines: old_lines,
+                missing_final_newline: old_no_newline.unwrap_or(false),
+            },
+            new: ModifiedLines {
+                start: new_start,
+                lines: new_lines,
+                missing_final_newline: new_no_newline.unwrap_or(false),
+            },
+        },
+    ))
 }
 
 impl fmt::Display for Hunk {
