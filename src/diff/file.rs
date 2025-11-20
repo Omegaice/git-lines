@@ -83,11 +83,23 @@ impl FileDiff {
         F: FnMut(u32) -> bool,
         G: FnMut(u32) -> bool,
     {
-        let filtered_hunks: Vec<Hunk> = self
-            .hunks
-            .iter()
-            .filter_map(|hunk| hunk.retain(&mut keep_old, &mut keep_new))
-            .collect();
+        let mut filtered_hunks = Vec::new();
+        let mut cumulative_additions: i32 = 0;
+        let mut cumulative_deletions: i32 = 0;
+
+        for hunk in &self.hunks {
+            if let Some(mut filtered) = hunk.retain(&mut keep_old, &mut keep_new) {
+                // Adjust new_start by cumulative effect of previous filtered hunks
+                let adjustment = cumulative_additions - cumulative_deletions;
+                filtered.new.start = (filtered.new.start as i32 + adjustment) as u32;
+
+                // Update cumulatives for next hunk
+                cumulative_additions += filtered.new.lines.len() as i32;
+                cumulative_deletions += filtered.old.lines.len() as i32;
+
+                filtered_hunks.push(filtered);
+            }
+        }
 
         if filtered_hunks.is_empty() {
             None
