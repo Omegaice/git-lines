@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc 00f768076f42c200f20d3e37b688a83e7d633c0040ef9e5eaded6a2f11549675 # shrinks to hunk = Hunk { old: ModifiedLines { start: 1, lines: [""], missing_final_newline: false }, new: ModifiedLines { start: 2, lines: [], missing_final_newline: false } }
 cc 2bd6b01bddbe201fc5a2dffb960f0c2bedfd923982231437ddf1776eb01a4c55 # shrinks to hunk = Hunk { old: ModifiedLines { start: 1, lines: [""], missing_final_newline: true }, new: ModifiedLines { start: 77, lines: [" ", "A", "A", "a"], missing_final_newline: false } }, keep_old = {}, keep_new = {78}
+cc c8a1eda42f815a85c287bf3e460e639b7c13f6caa001bfeb228c21de7b1d9cb8 # shrinks to hunk = Hunk { old: ModifiedLines { start: 32, lines: ["", "", ""], missing_final_newline: true }, new: ModifiedLines { start: 1, lines: [], missing_final_newline: false } }, keep_old = {32}, keep_new = {}

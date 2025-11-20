@@ -103,6 +103,7 @@ impl FileDiff {
 
 impl fmt::Display for FileDiff {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "diff --git a/{} b/{}", self.path, self.path)?;
         writeln!(f, "--- a/{}", self.path)?;
         writeln!(f, "+++ b/{}", self.path)?;
 
@@ -182,7 +183,7 @@ index fa2da6e..41114ff 100644
 
         assert_eq!(
             file_diff.to_string(),
-            "--- a/test.nix\n+++ b/test.nix\n@@ -10,0 +11 @@\n+new line\n"
+            "diff --git a/test.nix b/test.nix\n--- a/test.nix\n+++ b/test.nix\n@@ -10,0 +11 @@\n+new line\n"
         );
     }
 
@@ -220,7 +221,7 @@ index fa2da6e..41114ff 100644
 
         assert_eq!(
             file_diff.to_string(),
-            "--- a/config.nix\n+++ b/config.nix\n@@ -2,0 +3 @@\n+# FIRST\n@@ -8,0 +10 @@\n+# SECOND\n"
+            "diff --git a/config.nix b/config.nix\n--- a/config.nix\n+++ b/config.nix\n@@ -2,0 +3 @@\n+# FIRST\n@@ -8,0 +10 @@\n+# SECOND\n"
         );
     }
 
@@ -339,7 +340,7 @@ index fa2da6e..41114ff 100644
 
         assert_eq!(
             filtered.to_string(),
-            "--- a/config.nix\n+++ b/config.nix\n@@ -8,0 +9 @@\n+# SECOND\n"
+            "diff --git a/config.nix b/config.nix\n--- a/config.nix\n+++ b/config.nix\n@@ -8,0 +9 @@\n+# SECOND\n"
         );
     }
 
@@ -466,7 +467,7 @@ index 79e51de..88ee0b1 100644
         // Currently this fails: the marker is stripped and lost
         assert_eq!(
             file_diff.to_string(),
-            "--- a/config.nix\n+++ b/config.nix\n@@ -3 +3,2 @@\n-no newline\n\\ No newline at end of file\n+no newline\n+new line\n\\ No newline at end of file\n"
+            "diff --git a/config.nix b/config.nix\n--- a/config.nix\n+++ b/config.nix\n@@ -3 +3,2 @@\n-no newline\n\\ No newline at end of file\n+no newline\n+new line\n\\ No newline at end of file\n"
         );
     }
 }

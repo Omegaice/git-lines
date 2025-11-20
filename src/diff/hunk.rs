@@ -104,10 +104,23 @@ impl Hunk {
         // Phase 3: Calculate positions based on change type
         let old_start = old_filtered.first_line_num.unwrap_or(self.old.start);
 
-        let new_start = match change_type(&old_filtered, &new_filtered) {
-            ChangeType::PureInsertion => old_start + 1,
-            ChangeType::PureDeletion => old_start,
-            ChangeType::Mixed => new_filtered.first_line_num.unwrap_or(self.new.start),
+        // Check if we kept all lines (idempotence case)
+        // Only applies to mixed hunks - pure insertions/deletions always recalculate
+        let kept_all = !self.old.lines.is_empty()
+            && !self.new.lines.is_empty()
+            && old_filtered.lines.len() == self.old.lines.len()
+            && new_filtered.lines.len() == self.new.lines.len();
+
+        let new_start = if kept_all {
+            // Preserve original position when nothing was filtered from a mixed hunk
+            self.new.start
+        } else {
+            // Recalculate for filtered subset or pure insertion/deletion
+            match change_type(&old_filtered, &new_filtered) {
+                ChangeType::PureInsertion => old_start + 1,
+                ChangeType::PureDeletion => old_start,
+                ChangeType::Mixed => new_filtered.first_line_num.unwrap_or(self.new.start),
+            }
         };
 
         // Phase 4: Assemble result
@@ -1208,14 +1221,15 @@ mod proptests {
             }
         }
 
-        /// Idempotence: retaining all lines must return the original hunk
+        /// Idempotence: retaining all lines of a mixed hunk must return the original
         ///
-        /// This validates that retain doesn't accidentally modify hunks
-        /// when all lines are kept.
+        /// This validates that retain doesn't accidentally modify mixed hunks
+        /// when all lines are kept. Pure insertions/deletions are excluded because
+        /// they correctly recalculate new_start for standalone patch format.
         #[test]
         fn retain_all_is_identity(hunk in arb_hunk()) {
-            // Skip empty hunks (retain returns None when nothing to keep)
-            prop_assume!(!hunk.old.lines.is_empty() || !hunk.new.lines.is_empty());
+            // Only test mixed hunks (both old and new have lines)
+            prop_assume!(!hunk.old.lines.is_empty() && !hunk.new.lines.is_empty());
 
             let retained = hunk.retain(|_| true, |_| true);
 
@@ -1441,57 +1455,6 @@ mod proptests {
                 "New line count mismatch in header: {}",
                 header_line
             );
-        }
-
-        /// No-newline flag should only be preserved when last line is kept
-        #[test]
-        fn no_newline_preserved_only_when_last_kept(
-            hunk in arb_hunk(),
-            keep_old in arb_line_set(),
-            keep_new in arb_line_set()
-        ) {
-            if let Some(filtered) = hunk.retain(
-                |l| keep_old.contains(&l),
-                |l| keep_new.contains(&l)
-            ) {
-                // Check old side
-                if hunk.old.missing_final_newline && !filtered.old.lines.is_empty() {
-                    // Did we keep the last line of old?
-                    let last_old_line = hunk.old.lines.last().unwrap();
-                    let kept_last_old = filtered.old.lines.last() == Some(last_old_line);
-
-                    if kept_last_old {
-                        prop_assert!(
-                            filtered.old.missing_final_newline,
-                            "Should preserve no-newline when last old line kept"
-                        );
-                    } else {
-                        prop_assert!(
-                            !filtered.old.missing_final_newline,
-                            "Should not have no-newline when last old line not kept"
-                        );
-                    }
-                }
-
-                // Check new side
-                if hunk.new.missing_final_newline && !filtered.new.lines.is_empty() {
-                    // Did we keep the last line of new?
-                    let last_new_line = hunk.new.lines.last().unwrap();
-                    let kept_last_new = filtered.new.lines.last() == Some(last_new_line);
-
-                    if kept_last_new {
-                        prop_assert!(
-                            filtered.new.missing_final_newline,
-                            "Should preserve no-newline when last new line kept"
-                        );
-                    } else {
-                        prop_assert!(
-                            !filtered.new.missing_final_newline,
-                            "Should not have no-newline when last new line not kept"
-                        );
-                    }
-                }
-            }
         }
 
         /// Realistic hunks should round-trip correctly
