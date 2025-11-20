@@ -3,6 +3,7 @@ use super::file::FileDiff;
 /// A complete git diff containing changes for multiple files.
 ///
 /// This is the top-level structure representing the full output of `git diff`.
+#[derive(Debug)]
 pub struct Diff {
     /// All file diffs in this git diff
     pub files: Vec<FileDiff>,
@@ -15,6 +16,7 @@ impl Diff {
     /// as a [`FileDiff`].
     ///
     /// Files that fail to parse are silently skipped.
+    #[must_use]
     pub fn parse(text: &str) -> Self {
         let marker = "diff --git ";
 
@@ -70,6 +72,7 @@ impl Diff {
     ///     |path, line| path == "flake.nix" && line == 137
     /// );
     /// ```
+    #[must_use]
     pub fn retain<F, G>(&self, mut keep_old: F, mut keep_new: G) -> Self
     where
         F: FnMut(&str, u32) -> bool,
@@ -256,5 +259,102 @@ index 111..222 100644
         assert!(rendered.contains("+++ b/gtk.nix"));
         assert!(rendered.contains("@@ -11,0 +12 @@"));
         assert!(rendered.contains("+    gtk.cursorTheme.size = 24;"));
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use crate::diff::hunk::{Hunk, ModifiedLines};
+    use proptest::prelude::*;
+    use std::collections::HashSet;
+
+    /// Generate line content
+    fn arb_line_content() -> impl Strategy<Value = String> {
+        prop::collection::vec(prop::char::range(' ', '~'), 0..15)
+            .prop_map(|chars| chars.into_iter().collect())
+    }
+
+    /// Generate a simple FileDiff with one hunk
+    fn arb_simple_file(name: &'static str, old_start: u32) -> impl Strategy<Value = FileDiff> {
+        prop::collection::vec(arb_line_content(), 1..3).prop_map(move |lines| FileDiff {
+            path: name.to_string(),
+            hunks: vec![Hunk {
+                old: ModifiedLines {
+                    start: old_start,
+                    lines: vec![],
+                    missing_final_newline: false,
+                },
+                new: ModifiedLines {
+                    start: old_start + 1,
+                    lines,
+                    missing_final_newline: false,
+                },
+            }],
+        })
+    }
+
+    /// Generate a Diff with multiple files
+    fn arb_multi_file_diff() -> impl Strategy<Value = Diff> {
+        (
+            arb_simple_file("file_a.txt", 10),
+            arb_simple_file("file_b.txt", 20),
+        )
+            .prop_map(|(f1, f2)| Diff {
+                files: vec![f1, f2],
+            })
+    }
+
+    /// Generate a set of line numbers to keep
+    fn arb_line_set() -> impl Strategy<Value = HashSet<u32>> {
+        prop::collection::hash_set(1..50u32, 0..10)
+    }
+
+    proptest! {
+        /// Diff with multiple files must round-trip
+        #[test]
+        fn diff_roundtrips(diff in arb_multi_file_diff()) {
+            let rendered = diff.to_string();
+            let parsed = Diff::parse(&rendered);
+
+            prop_assert_eq!(
+                parsed.files.len(),
+                diff.files.len(),
+                "File count mismatch after round-trip"
+            );
+
+            for (orig, parsed) in diff.files.iter().zip(parsed.files.iter()) {
+                prop_assert_eq!(&parsed.path, &orig.path);
+            }
+        }
+
+        /// Filtered multi-file diff must maintain consistency
+        #[test]
+        fn filtered_diff_maintains_files(
+            diff in arb_multi_file_diff(),
+            keep_new in arb_line_set()
+        ) {
+            let filtered = diff.retain(
+                |_, _| false,
+                |_, l| keep_new.contains(&l)
+            );
+
+            // Each remaining file should have at least one hunk
+            for file in &filtered.files {
+                prop_assert!(
+                    !file.hunks.is_empty(),
+                    "File with no hunks should be filtered out: {:?}",
+                    file
+                );
+            }
+
+            // File paths should be unique
+            let paths: HashSet<_> = filtered.files.iter().map(|f| &f.path).collect();
+            prop_assert_eq!(
+                paths.len(),
+                filtered.files.len(),
+                "Duplicate file paths in filtered diff"
+            );
+        }
     }
 }

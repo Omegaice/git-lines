@@ -52,6 +52,7 @@ impl Hunk {
     /// content lines prefixed with `-`, `+`, or `\` (for no-newline marker).
     ///
     /// Returns `None` if parsing fails.
+    #[must_use]
     pub fn parse(text: &str) -> Option<Self> {
         parse_hunk(text).ok().map(|(_, hunk)| hunk)
     }
@@ -79,6 +80,7 @@ impl Hunk {
     /// If the old lines had no trailing newline and you're keeping additions after it,
     /// the method automatically includes the old deletion to provide the required
     /// newline separator. This prevents corrupted git index state.
+    #[must_use]
     pub fn retain<F, G>(&self, keep_old: F, keep_new: G) -> Option<Self>
     where
         F: FnMut(u32) -> bool,
@@ -1007,5 +1009,540 @@ mod tests {
             filtered.to_string(),
             "@@ -10,0 +11 @@\n+new content with newline\n"
         );
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+    use std::collections::HashSet;
+
+    /// Generate line content without newlines (diff format handles those)
+    fn arb_line_content() -> impl Strategy<Value = String> {
+        // Printable ASCII without newlines, reasonable length
+        prop::collection::vec(prop::char::range(' ', '~'), 0..30)
+            .prop_map(|chars| chars.into_iter().collect())
+    }
+
+    /// Generate a ModifiedLines struct
+    fn arb_modified_lines() -> impl Strategy<Value = ModifiedLines> {
+        (
+            1..100u32,                                       // start
+            prop::collection::vec(arb_line_content(), 0..5), // lines
+            prop::bool::ANY,                                 // missing_final_newline
+        )
+            .prop_map(|(start, lines, missing_newline)| ModifiedLines {
+                start,
+                // Only meaningful if there are lines
+                missing_final_newline: !lines.is_empty() && missing_newline,
+                lines,
+            })
+    }
+
+    /// Generate an arbitrary hunk
+    fn arb_hunk() -> impl Strategy<Value = Hunk> {
+        (arb_modified_lines(), arb_modified_lines()).prop_map(|(old, new)| Hunk { old, new })
+    }
+
+    /// Generate a set of line numbers to keep
+    fn arb_line_set() -> impl Strategy<Value = HashSet<u32>> {
+        prop::collection::hash_set(1..100u32, 0..15)
+    }
+
+    /// Generate a replacement hunk (both old and new have lines, same start)
+    fn arb_replacement() -> impl Strategy<Value = Hunk> {
+        (
+            1..100u32,                                       // start
+            prop::collection::vec(arb_line_content(), 1..4), // old_lines
+            prop::collection::vec(arb_line_content(), 1..4), // new_lines
+            prop::bool::ANY,                                 // old_missing_newline
+            prop::bool::ANY,                                 // new_missing_newline
+        )
+            .prop_map(|(start, old_lines, new_lines, old_nl, new_nl)| Hunk {
+                old: ModifiedLines {
+                    start,
+                    lines: old_lines,
+                    missing_final_newline: old_nl,
+                },
+                new: ModifiedLines {
+                    start,
+                    lines: new_lines,
+                    missing_final_newline: new_nl,
+                },
+            })
+    }
+
+    /// Generate realistic hunks using common patterns
+    fn arb_realistic_hunk() -> impl Strategy<Value = Hunk> {
+        prop_oneof![arb_pure_insertion(), arb_pure_deletion(), arb_replacement(),]
+    }
+
+    /// Generate a pure insertion hunk (no deletions)
+    fn arb_pure_insertion() -> impl Strategy<Value = Hunk> {
+        (
+            1..100u32,                                       // old_start
+            prop::collection::vec(arb_line_content(), 1..5), // new_lines (at least 1)
+            prop::bool::ANY,                                 // missing_final_newline
+        )
+            .prop_map(|(old_start, new_lines, missing_newline)| Hunk {
+                old: ModifiedLines {
+                    start: old_start,
+                    lines: vec![],
+                    missing_final_newline: false,
+                },
+                new: ModifiedLines {
+                    start: old_start + 1,
+                    lines: new_lines,
+                    missing_final_newline: missing_newline,
+                },
+            })
+    }
+
+    /// Generate a pure deletion hunk (no additions)
+    fn arb_pure_deletion() -> impl Strategy<Value = Hunk> {
+        (
+            1..100u32,                                       // old_start
+            prop::collection::vec(arb_line_content(), 1..5), // old_lines (at least 1)
+            prop::bool::ANY,                                 // missing_final_newline
+        )
+            .prop_map(|(old_start, old_lines, missing_newline)| Hunk {
+                old: ModifiedLines {
+                    start: old_start,
+                    lines: old_lines,
+                    missing_final_newline: missing_newline,
+                },
+                new: ModifiedLines {
+                    start: old_start,
+                    lines: vec![],
+                    missing_final_newline: false,
+                },
+            })
+    }
+
+    /// Generate a hunk that requires bridge synthesis:
+    /// - Old has content with no trailing newline
+    /// - New has the same content (bridge) followed by additions
+    fn arb_bridge_scenario() -> impl Strategy<Value = Hunk> {
+        (
+            1..100u32,                                       // start
+            arb_line_content(),                              // bridge content
+            prop::collection::vec(arb_line_content(), 1..4), // new additions after bridge
+        )
+            .prop_map(|(start, bridge_content, new_additions)| {
+                let mut new_lines = vec![bridge_content.clone()];
+                new_lines.extend(new_additions);
+                Hunk {
+                    old: ModifiedLines {
+                        start,
+                        lines: vec![bridge_content],
+                        missing_final_newline: true, // Key: no trailing newline
+                    },
+                    new: ModifiedLines {
+                        start,
+                        lines: new_lines,
+                        missing_final_newline: false,
+                    },
+                }
+            })
+    }
+
+    proptest! {
+        /// Basic round-trip: any hunk must survive render → parse
+        ///
+        /// This validates:
+        /// - The generators produce valid hunks
+        /// - The parser and renderer are inverses
+        #[test]
+        fn hunk_roundtrips(hunk in arb_hunk()) {
+            let rendered = hunk.to_string();
+            let parsed = Hunk::parse(&rendered);
+
+            prop_assert!(
+                parsed.is_some(),
+                "Failed to parse rendered hunk:\n{}\nOriginal: {:?}",
+                rendered, hunk
+            );
+
+            prop_assert_eq!(
+                parsed.unwrap(),
+                hunk,
+                "Round-trip failed for:\n{}",
+                rendered
+            );
+        }
+
+        /// The core property: filtered hunks must round-trip through render/parse
+        ///
+        /// This catches:
+        /// - Line number recalculation bugs
+        /// - Header generation bugs
+        /// - No-newline marker handling bugs
+        /// - Any state inconsistency between fields
+        #[test]
+        fn filtered_hunk_roundtrips(
+            hunk in arb_hunk(),
+            keep_old in arb_line_set(),
+            keep_new in arb_line_set()
+        ) {
+            if let Some(filtered) = hunk.retain(
+                |l| keep_old.contains(&l),
+                |l| keep_new.contains(&l)
+            ) {
+                // The filtered hunk must render and parse back to itself
+                let rendered = filtered.to_string();
+                let parsed = Hunk::parse(&rendered);
+
+                prop_assert!(
+                    parsed.is_some(),
+                    "Failed to parse rendered hunk:\n{}\nOriginal: {:?}\nFiltered: {:?}",
+                    rendered, hunk, filtered
+                );
+
+                prop_assert_eq!(
+                    parsed.unwrap(),
+                    filtered,
+                    "Round-trip failed for:\n{}",
+                    rendered
+                );
+            }
+        }
+
+        /// Idempotence: retaining all lines must return the original hunk
+        ///
+        /// This validates that retain doesn't accidentally modify hunks
+        /// when all lines are kept.
+        #[test]
+        fn retain_all_is_identity(hunk in arb_hunk()) {
+            // Skip empty hunks (retain returns None when nothing to keep)
+            prop_assume!(!hunk.old.lines.is_empty() || !hunk.new.lines.is_empty());
+
+            let retained = hunk.retain(|_| true, |_| true);
+
+            prop_assert!(
+                retained.is_some(),
+                "retain(true, true) returned None for non-empty hunk: {:?}",
+                hunk
+            );
+
+            prop_assert_eq!(
+                retained.unwrap(),
+                hunk,
+                "retain(true, true) modified the hunk"
+            );
+        }
+
+        /// Empty filter: retaining nothing must return None
+        #[test]
+        fn retain_none_is_none(hunk in arb_hunk()) {
+            let retained = hunk.retain(|_| false, |_| false);
+            prop_assert!(
+                retained.is_none(),
+                "retain(false, false) returned Some for: {:?}",
+                hunk
+            );
+        }
+
+        /// Pure insertion recalculation: new_start must equal old_start + 1
+        ///
+        /// When a hunk has only additions (no deletions), the new content
+        /// appears right after the old position, so new_start = old_start + 1.
+        #[test]
+        fn pure_insertion_new_start_is_old_start_plus_one(hunk in arb_pure_insertion()) {
+            // Retain all additions
+            let retained = hunk.retain(|_| false, |_| true).unwrap();
+
+            prop_assert_eq!(
+                retained.new.start,
+                retained.old.start + 1,
+                "Pure insertion should have new_start = old_start + 1, got {:?}",
+                retained
+            );
+        }
+
+        /// Pure deletion recalculation: new_start must equal old_start
+        ///
+        /// When a hunk has only deletions (no additions), the gap appears
+        /// at the old position, so new_start = old_start.
+        #[test]
+        fn pure_deletion_new_start_is_old_start(hunk in arb_pure_deletion()) {
+            // Retain all deletions
+            let retained = hunk.retain(|_| true, |_| false).unwrap();
+
+            prop_assert_eq!(
+                retained.new.start,
+                retained.old.start,
+                "Pure deletion should have new_start = old_start, got {:?}",
+                retained
+            );
+        }
+
+        /// Mixed to pure insertion: filtering out deletions recalculates correctly
+        #[test]
+        fn mixed_to_pure_insertion_recalculates(hunk in arb_hunk()) {
+            // Skip hunks that don't have both old and new lines
+            prop_assume!(!hunk.old.lines.is_empty() && !hunk.new.lines.is_empty());
+
+            // Filter to only additions (becomes pure insertion)
+            let retained = hunk.retain(|_| false, |_| true).unwrap();
+
+            prop_assert_eq!(
+                retained.new.start,
+                retained.old.start + 1,
+                "Mixed→pure insertion should have new_start = old_start + 1, got {:?}",
+                retained
+            );
+        }
+
+        /// Mixed to pure deletion: filtering out additions recalculates correctly
+        #[test]
+        fn mixed_to_pure_deletion_recalculates(hunk in arb_hunk()) {
+            // Skip hunks that don't have both old and new lines
+            prop_assume!(!hunk.old.lines.is_empty() && !hunk.new.lines.is_empty());
+
+            // Filter to only deletions (becomes pure deletion)
+            let retained = hunk.retain(|_| true, |_| false).unwrap();
+
+            prop_assert_eq!(
+                retained.new.start,
+                retained.old.start,
+                "Mixed→pure deletion should have new_start = old_start, got {:?}",
+                retained
+            );
+        }
+
+        /// Bridge synthesis: when filtering additions after a no-newline line,
+        /// the bridge content must be auto-included to provide line separation.
+        ///
+        /// Without bridge synthesis, git apply would concatenate lines.
+        #[test]
+        fn bridge_synthesis_includes_separator(hunk in arb_bridge_scenario()) {
+            // Skip the first addition (the bridge), keep only subsequent additions
+            // This should trigger bridge synthesis
+            let first_new_line = hunk.new.start;
+            let retained = hunk.retain(
+                |_| false,
+                |l| l > first_new_line
+            );
+
+            // Should have a result (bridge was synthesized)
+            prop_assert!(
+                retained.is_some(),
+                "Bridge synthesis should produce a result for: {:?}",
+                hunk
+            );
+
+            let retained = retained.unwrap();
+
+            // The bridge must be included: old deletion + new addition of same content
+            prop_assert!(
+                !retained.old.lines.is_empty(),
+                "Bridge synthesis must include old deletion: {:?}",
+                retained
+            );
+
+            prop_assert!(
+                !retained.new.lines.is_empty(),
+                "Bridge synthesis must include new addition: {:?}",
+                retained
+            );
+
+            // First line of new should be the bridge content (same as old)
+            prop_assert_eq!(
+                retained.old.lines.last(),
+                retained.new.lines.first(),
+                "Bridge content must match: old={:?}, new={:?}",
+                retained.old, retained.new
+            );
+
+            // Result must still round-trip
+            let rendered = retained.to_string();
+            let parsed = Hunk::parse(&rendered);
+            prop_assert!(parsed.is_some(), "Bridge result must parse: {}", rendered);
+            prop_assert_eq!(parsed.unwrap(), retained);
+        }
+
+        /// Subset invariant: filtered result must only contain lines from original
+        ///
+        /// This catches data corruption or incorrect bridge synthesis content.
+        /// Note: Bridge synthesis may copy old content to new, so new lines
+        /// can come from either hunk.new OR hunk.old.
+        #[test]
+        fn filtered_is_subset_of_original(
+            hunk in arb_hunk(),
+            keep_old in arb_line_set(),
+            keep_new in arb_line_set()
+        ) {
+            if let Some(filtered) = hunk.retain(
+                |l| keep_old.contains(&l),
+                |l| keep_new.contains(&l)
+            ) {
+                // Every line in filtered.old must exist in hunk.old
+                for line in &filtered.old.lines {
+                    prop_assert!(
+                        hunk.old.lines.contains(line),
+                        "Filtered old line {:?} not in original {:?}",
+                        line, hunk.old.lines
+                    );
+                }
+
+                // Every line in filtered.new must exist in hunk.new OR hunk.old
+                // (bridge synthesis copies old content to new)
+                for line in &filtered.new.lines {
+                    prop_assert!(
+                        hunk.new.lines.contains(line) || hunk.old.lines.contains(line),
+                        "Filtered new line {:?} not in original new {:?} or old {:?}",
+                        line, hunk.new.lines, hunk.old.lines
+                    );
+                }
+            }
+        }
+
+        /// Header consistency: rendered header line counts must match actual content
+        #[test]
+        fn hunk_header_matches_content(hunk in arb_hunk()) {
+            let rendered = hunk.to_string();
+
+            // Parse the header line: @@ -OLD,COUNT +NEW,COUNT @@
+            let header_line = rendered.lines().next().unwrap();
+
+            // Extract counts from header (handles both "-X" and "-X,Y" formats)
+            let parts: Vec<&str> = header_line
+                .trim_start_matches("@@ ")
+                .trim_end_matches(" @@")
+                .split(' ')
+                .collect();
+
+            let old_part = parts[0].trim_start_matches('-');
+            let new_part = parts[1].trim_start_matches('+');
+
+            let old_count = if let Some((_, count)) = old_part.split_once(',') {
+                count.parse::<usize>().unwrap()
+            } else {
+                if hunk.old.lines.is_empty() { 0 } else { 1 }
+            };
+
+            let new_count = if let Some((_, count)) = new_part.split_once(',') {
+                count.parse::<usize>().unwrap()
+            } else {
+                if hunk.new.lines.is_empty() { 0 } else { 1 }
+            };
+
+            prop_assert_eq!(
+                old_count,
+                hunk.old.lines.len(),
+                "Old line count mismatch in header: {}",
+                header_line
+            );
+
+            prop_assert_eq!(
+                new_count,
+                hunk.new.lines.len(),
+                "New line count mismatch in header: {}",
+                header_line
+            );
+        }
+
+        /// No-newline flag should only be preserved when last line is kept
+        #[test]
+        fn no_newline_preserved_only_when_last_kept(
+            hunk in arb_hunk(),
+            keep_old in arb_line_set(),
+            keep_new in arb_line_set()
+        ) {
+            if let Some(filtered) = hunk.retain(
+                |l| keep_old.contains(&l),
+                |l| keep_new.contains(&l)
+            ) {
+                // Check old side
+                if hunk.old.missing_final_newline && !filtered.old.lines.is_empty() {
+                    // Did we keep the last line of old?
+                    let last_old_line = hunk.old.lines.last().unwrap();
+                    let kept_last_old = filtered.old.lines.last() == Some(last_old_line);
+
+                    if kept_last_old {
+                        prop_assert!(
+                            filtered.old.missing_final_newline,
+                            "Should preserve no-newline when last old line kept"
+                        );
+                    } else {
+                        prop_assert!(
+                            !filtered.old.missing_final_newline,
+                            "Should not have no-newline when last old line not kept"
+                        );
+                    }
+                }
+
+                // Check new side
+                if hunk.new.missing_final_newline && !filtered.new.lines.is_empty() {
+                    // Did we keep the last line of new?
+                    let last_new_line = hunk.new.lines.last().unwrap();
+                    let kept_last_new = filtered.new.lines.last() == Some(last_new_line);
+
+                    if kept_last_new {
+                        prop_assert!(
+                            filtered.new.missing_final_newline,
+                            "Should preserve no-newline when last new line kept"
+                        );
+                    } else {
+                        prop_assert!(
+                            !filtered.new.missing_final_newline,
+                            "Should not have no-newline when last new line not kept"
+                        );
+                    }
+                }
+            }
+        }
+
+        /// Realistic hunks should round-trip correctly
+        ///
+        /// Uses the realistic generator that produces structurally valid hunks
+        /// (pure insertions, pure deletions, replacements) rather than arbitrary ones.
+        #[test]
+        fn realistic_hunk_roundtrips(hunk in arb_realistic_hunk()) {
+            let rendered = hunk.to_string();
+            let parsed = Hunk::parse(&rendered);
+
+            prop_assert!(
+                parsed.is_some(),
+                "Failed to parse realistic hunk:\n{}\nOriginal: {:?}",
+                rendered, hunk
+            );
+
+            prop_assert_eq!(
+                parsed.unwrap(),
+                hunk,
+                "Round-trip failed for realistic hunk:\n{}",
+                rendered
+            );
+        }
+
+        /// Filtered realistic hunks should round-trip
+        #[test]
+        fn filtered_realistic_hunk_roundtrips(
+            hunk in arb_realistic_hunk(),
+            keep_old in arb_line_set(),
+            keep_new in arb_line_set()
+        ) {
+            if let Some(filtered) = hunk.retain(
+                |l| keep_old.contains(&l),
+                |l| keep_new.contains(&l)
+            ) {
+                let rendered = filtered.to_string();
+                let parsed = Hunk::parse(&rendered);
+
+                prop_assert!(
+                    parsed.is_some(),
+                    "Failed to parse filtered realistic hunk:\n{}",
+                    rendered
+                );
+
+                prop_assert_eq!(
+                    parsed.unwrap(),
+                    filtered,
+                    "Round-trip failed for filtered realistic hunk"
+                );
+            }
+        }
     }
 }

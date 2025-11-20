@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc c7a30f713954f8836f9aa3fbf94ec63aef693f11dba46e77c716b8473e913dae # shrinks to diff = Diff { files: [FileDiff { path: "file_a.txt", hunks: [Hunk { old: ModifiedLines { start: 10, lines: [], missing_final_newline: false }, new: ModifiedLines { start: 11, lines: [""], missing_final_newline: false } }] }, FileDiff { path: "file_b.txt", hunks: [Hunk { old: ModifiedLines { start: 20, lines: [], missing_final_newline: false }, new: ModifiedLines { start: 21, lines: [""], missing_final_newline: false } }] }] }

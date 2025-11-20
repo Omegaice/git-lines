@@ -18,6 +18,7 @@ impl FileDiff {
     /// Expects input starting with `diff --git` and containing `+++ b/path` header.
     ///
     /// Returns `None` if the file path cannot be extracted.
+    #[must_use]
     pub fn parse(text: &str) -> Option<Self> {
         // Extract path from +++ b/... header
         let path = text
@@ -65,6 +66,7 @@ impl FileDiff {
     ///
     /// - `Some(FileDiff)` containing only hunks with matching lines
     /// - `None` if no lines matched in any hunk
+    #[must_use]
     pub fn retain<F, G>(&self, mut keep_old: F, mut keep_new: G) -> Option<Self>
     where
         F: FnMut(u32) -> bool,
@@ -466,5 +468,217 @@ index 79e51de..88ee0b1 100644
             file_diff.to_string(),
             "--- a/config.nix\n+++ b/config.nix\n@@ -3 +3,2 @@\n-no newline\n\\ No newline at end of file\n+no newline\n+new line\n\\ No newline at end of file\n"
         );
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use crate::diff::hunk::ModifiedLines;
+    use proptest::prelude::*;
+    use std::collections::HashSet;
+
+    /// Generate line content
+    fn arb_line_content() -> impl Strategy<Value = String> {
+        prop::collection::vec(prop::char::range(' ', '~'), 0..20)
+            .prop_map(|chars| chars.into_iter().collect())
+    }
+
+    /// Generate a pure insertion hunk at a given position
+    fn arb_insertion_hunk(old_start: u32, num_lines: usize) -> impl Strategy<Value = Hunk> {
+        prop::collection::vec(arb_line_content(), num_lines..=num_lines).prop_map(
+            move |new_lines| Hunk {
+                old: ModifiedLines {
+                    start: old_start,
+                    lines: vec![],
+                    missing_final_newline: false,
+                },
+                new: ModifiedLines {
+                    start: old_start + 1,
+                    lines: new_lines,
+                    missing_final_newline: false,
+                },
+            },
+        )
+    }
+
+    /// Generate a FileDiff with multiple non-overlapping insertion hunks
+    fn arb_multi_hunk_file() -> impl Strategy<Value = FileDiff> {
+        // Generate 2-3 hunks at different positions
+        (
+            arb_insertion_hunk(5, 2),  // 2 lines after line 5
+            arb_insertion_hunk(15, 3), // 3 lines after line 15
+            arb_insertion_hunk(30, 2), // 2 lines after line 30
+        )
+            .prop_map(|(h1, h2, h3)| FileDiff {
+                path: "test.txt".to_string(),
+                hunks: vec![h1, h2, h3],
+            })
+    }
+
+    /// Generate a set of line numbers to keep
+    fn arb_line_set() -> impl Strategy<Value = HashSet<u32>> {
+        prop::collection::hash_set(1..50u32, 0..10)
+    }
+
+    /// Generate a pure deletion hunk at a given position
+    fn arb_deletion_hunk(old_start: u32, num_lines: usize) -> impl Strategy<Value = Hunk> {
+        prop::collection::vec(arb_line_content(), num_lines..=num_lines).prop_map(
+            move |old_lines| Hunk {
+                old: ModifiedLines {
+                    start: old_start,
+                    lines: old_lines,
+                    missing_final_newline: false,
+                },
+                new: ModifiedLines {
+                    start: old_start,
+                    lines: vec![],
+                    missing_final_newline: false,
+                },
+            },
+        )
+    }
+
+    /// Generate a replacement hunk at a given position
+    fn arb_replacement_hunk(start: u32) -> impl Strategy<Value = Hunk> {
+        (
+            prop::collection::vec(arb_line_content(), 1..3),
+            prop::collection::vec(arb_line_content(), 1..3),
+        )
+            .prop_map(move |(old_lines, new_lines)| Hunk {
+                old: ModifiedLines {
+                    start,
+                    lines: old_lines,
+                    missing_final_newline: false,
+                },
+                new: ModifiedLines {
+                    start,
+                    lines: new_lines,
+                    missing_final_newline: false,
+                },
+            })
+    }
+
+    /// Generate a FileDiff with mixed hunk types (insertions, deletions, replacements)
+    fn arb_mixed_hunk_file() -> impl Strategy<Value = FileDiff> {
+        (
+            arb_insertion_hunk(5, 2), // insertion
+            arb_deletion_hunk(15, 2), // deletion
+            arb_replacement_hunk(30), // replacement
+        )
+            .prop_map(|(h1, h2, h3)| FileDiff {
+                path: "mixed.txt".to_string(),
+                hunks: vec![h1, h2, h3],
+            })
+    }
+
+    proptest! {
+        /// FileDiff round-trip: any multi-hunk file must survive render → parse
+        #[test]
+        fn file_diff_roundtrips(file_diff in arb_multi_hunk_file()) {
+            let rendered = file_diff.to_string();
+            let parsed = FileDiff::parse(&rendered);
+
+            prop_assert!(
+                parsed.is_some(),
+                "Failed to parse rendered FileDiff:\n{}",
+                rendered
+            );
+
+            let parsed = parsed.unwrap();
+            prop_assert_eq!(parsed.path, file_diff.path);
+            prop_assert_eq!(parsed.hunks.len(), file_diff.hunks.len());
+        }
+
+        /// Filtered FileDiff must round-trip
+        #[test]
+        fn filtered_file_diff_roundtrips(
+            file_diff in arb_multi_hunk_file(),
+            keep_new in arb_line_set()
+        ) {
+            if let Some(filtered) = file_diff.retain(
+                |_| false,
+                |l| keep_new.contains(&l)
+            ) {
+                let rendered = filtered.to_string();
+                let parsed = FileDiff::parse(&rendered);
+
+                prop_assert!(
+                    parsed.is_some(),
+                    "Failed to parse filtered FileDiff:\n{}\nOriginal: {:?}",
+                    rendered, file_diff
+                );
+            }
+        }
+
+        /// Cumulative adjustment: when filtering multiple hunks, later hunks
+        /// must have their new_start adjusted for the net effect of earlier hunks
+        #[test]
+        fn cumulative_adjustment_maintains_order(
+            file_diff in arb_multi_hunk_file(),
+            keep_new in arb_line_set()
+        ) {
+            if let Some(filtered) = file_diff.retain(
+                |_| false,
+                |l| keep_new.contains(&l)
+            ) {
+                // Verify hunks are still ordered by position
+                for window in filtered.hunks.windows(2) {
+                    prop_assert!(
+                        window[0].old.start < window[1].old.start,
+                        "Hunks not ordered by old_start: {:?}",
+                        filtered.hunks
+                    );
+                }
+
+                // Verify new_start values are monotonically increasing
+                for window in filtered.hunks.windows(2) {
+                    prop_assert!(
+                        window[0].new.start < window[1].new.start,
+                        "Hunks not ordered by new_start: {:?}",
+                        filtered.hunks
+                    );
+                }
+            }
+        }
+
+        /// Mixed hunk file (insertions, deletions, replacements) should round-trip
+        #[test]
+        fn mixed_hunk_file_roundtrips(file_diff in arb_mixed_hunk_file()) {
+            let rendered = file_diff.to_string();
+            let parsed = FileDiff::parse(&rendered);
+
+            prop_assert!(
+                parsed.is_some(),
+                "Failed to parse mixed hunk file:\n{}",
+                rendered
+            );
+
+            let parsed = parsed.unwrap();
+            prop_assert_eq!(parsed.path, file_diff.path);
+            prop_assert_eq!(parsed.hunks.len(), file_diff.hunks.len());
+        }
+
+        /// Filtered mixed hunk file should round-trip
+        #[test]
+        fn filtered_mixed_hunk_file_roundtrips(
+            file_diff in arb_mixed_hunk_file(),
+            keep_old in arb_line_set(),
+            keep_new in arb_line_set()
+        ) {
+            if let Some(filtered) = file_diff.retain(
+                |l| keep_old.contains(&l),
+                |l| keep_new.contains(&l)
+            ) {
+                let rendered = filtered.to_string();
+                let parsed = FileDiff::parse(&rendered);
+
+                prop_assert!(
+                    parsed.is_some(),
+                    "Failed to parse filtered mixed hunk file:\n{}",
+                    rendered
+                );
+            }
+        }
     }
 }
