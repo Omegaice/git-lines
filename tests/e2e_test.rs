@@ -11,7 +11,7 @@ use tempfile::TempDir;
 struct Fixture {
     dir: TempDir,
     repo: Repository,
-    stager: GitStager<'static>,
+    stager: GitStager,
 }
 
 impl Fixture {
@@ -25,10 +25,7 @@ impl Fixture {
         config.set_str("user.name", "Test User").unwrap();
         config.set_str("user.email", "test@example.com").unwrap();
 
-        // Leak the path string to get 'static lifetime
-        let path_str: &'static str =
-            Box::leak(dir.path().to_str().unwrap().to_string().into_boxed_str());
-        let stager = GitStager::new(path_str);
+        let stager = GitStager::new(dir.path());
 
         Self { dir, repo, stager }
     }

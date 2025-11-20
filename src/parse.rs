@@ -20,22 +20,30 @@
 //!
 //! ```
 //! use git_stager::parse::{parse_file_refs, LineRef};
+//! use std::num::NonZeroU32;
 //!
 //! // Single addition
 //! let refs = parse_file_refs("flake.nix:137").unwrap();
 //! assert_eq!(refs.file, "flake.nix");
-//! assert_eq!(refs.refs, vec![LineRef::Add(137)]);
+//! assert_eq!(refs.refs, vec![LineRef::Add(NonZeroU32::new(137).unwrap())]);
 //!
 //! // Range
 //! let refs = parse_file_refs("config.nix:10..15").unwrap();
-//! assert_eq!(refs.refs, vec![LineRef::AddRange(10, 15)]);
+//! assert_eq!(refs.refs, vec![LineRef::AddRange(
+//!     NonZeroU32::new(10).unwrap(),
+//!     NonZeroU32::new(15).unwrap()
+//! )]);
 //!
 //! // Mixed operations
 //! let refs = parse_file_refs("file.nix:-10,12").unwrap();
-//! assert_eq!(refs.refs, vec![LineRef::Delete(10), LineRef::Add(12)]);
+//! assert_eq!(refs.refs, vec![
+//!     LineRef::Delete(NonZeroU32::new(10).unwrap()),
+//!     LineRef::Add(NonZeroU32::new(12).unwrap())
+//! ]);
 //! ```
 
 use error_set::error_set;
+use std::num::NonZeroU32;
 
 error_set! {
     /// Errors from parsing file:refs syntax
@@ -49,12 +57,9 @@ error_set! {
         /// No line references provided after the colon
         #[display("No line references provided")]
         EmptyRefs,
-        /// Line number could not be parsed as a valid u32
+        /// Line number could not be parsed as a valid non-zero u32
         #[display("Invalid line number '{value}'")]
         InvalidLineNumber { value: String },
-        /// Line number is zero (line numbers are 1-indexed)
-        #[display("Line number cannot be zero")]
-        ZeroLineNumber,
         /// Range has start greater than end
         #[display("Invalid range {start}..{end}: start must be <= end")]
         InvalidRange { start: u32, end: u32 },
@@ -71,13 +76,13 @@ error_set! {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LineRef {
     /// Addition at new line number
-    Add(u32),
+    Add(NonZeroU32),
     /// Addition range (inclusive start and end)
-    AddRange(u32, u32),
+    AddRange(NonZeroU32, NonZeroU32),
     /// Deletion at old line number
-    Delete(u32),
+    Delete(NonZeroU32),
     /// Deletion range (inclusive start and end)
-    DeleteRange(u32, u32),
+    DeleteRange(NonZeroU32, NonZeroU32),
 }
 
 /// Parsed file reference with line selections.
@@ -105,19 +110,23 @@ pub struct FileLineRefs {
 ///
 /// ```
 /// use git_stager::parse::{parse_file_refs, LineRef};
+/// use std::num::NonZeroU32;
 ///
 /// let refs = parse_file_refs("flake.nix:137").unwrap();
 /// assert_eq!(refs.file, "flake.nix");
-/// assert_eq!(refs.refs, vec![LineRef::Add(137)]);
+/// assert_eq!(refs.refs, vec![LineRef::Add(NonZeroU32::new(137).unwrap())]);
 ///
 /// let refs = parse_file_refs("file.nix:10..15").unwrap();
-/// assert_eq!(refs.refs, vec![LineRef::AddRange(10, 15)]);
+/// assert_eq!(refs.refs, vec![LineRef::AddRange(
+///     NonZeroU32::new(10).unwrap(),
+///     NonZeroU32::new(15).unwrap()
+/// )]);
 ///
 /// let refs = parse_file_refs("file.nix:10,15,-20").unwrap();
 /// assert_eq!(refs.refs, vec![
-///     LineRef::Add(10),
-///     LineRef::Add(15),
-///     LineRef::Delete(20)
+///     LineRef::Add(NonZeroU32::new(10).unwrap()),
+///     LineRef::Add(NonZeroU32::new(15).unwrap()),
+///     LineRef::Delete(NonZeroU32::new(20).unwrap())
 /// ]);
 /// ```
 ///
@@ -175,14 +184,20 @@ fn parse_single_ref(input: &str) -> Result<LineRef, ParseError> {
             let start = parse_delete_number(start_str)?;
             let end = parse_delete_number(end_str)?;
             if start > end {
-                return Err(ParseError::InvalidRange { start, end });
+                return Err(ParseError::InvalidRange {
+                    start: start.get(),
+                    end: end.get(),
+                });
             }
             Ok(LineRef::DeleteRange(start, end))
         } else {
             let start = parse_add_number(start_str)?;
             let end = parse_add_number(end_str)?;
             if start > end {
-                return Err(ParseError::InvalidRange { start, end });
+                return Err(ParseError::InvalidRange {
+                    start: start.get(),
+                    end: end.get(),
+                });
             }
             Ok(LineRef::AddRange(start, end))
         }
@@ -194,34 +209,26 @@ fn parse_single_ref(input: &str) -> Result<LineRef, ParseError> {
 }
 
 /// Parse a positive line number (for additions)
-fn parse_add_number(input: &str) -> Result<u32, ParseError> {
-    let num = input
-        .parse::<u32>()
+fn parse_add_number(input: &str) -> Result<NonZeroU32, ParseError> {
+    input
+        .parse::<NonZeroU32>()
         .map_err(|_| ParseError::InvalidLineNumber {
             value: input.to_string(),
-        })?;
-    if num == 0 {
-        return Err(ParseError::ZeroLineNumber);
-    }
-    Ok(num)
+        })
 }
 
 /// Parse a negative line number (for deletions)
-fn parse_delete_number(input: &str) -> Result<u32, ParseError> {
+fn parse_delete_number(input: &str) -> Result<NonZeroU32, ParseError> {
     if !input.starts_with('-') {
         return Err(ParseError::InvalidDeleteRef {
             value: input.to_string(),
         });
     }
-    let num = input[1..]
-        .parse::<u32>()
+    input[1..]
+        .parse::<NonZeroU32>()
         .map_err(|_| ParseError::InvalidLineNumber {
             value: input.to_string(),
-        })?;
-    if num == 0 {
-        return Err(ParseError::ZeroLineNumber);
-    }
-    Ok(num)
+        })
 }
 
 #[cfg(test)]
@@ -230,39 +237,46 @@ mod tests {
     use super::*;
     use similar_asserts::assert_eq;
 
+    fn nz(n: u32) -> NonZeroU32 {
+        NonZeroU32::new(n).unwrap()
+    }
+
     #[test]
     fn parse_single_addition() {
         let result = parse_file_refs("flake.nix:137").unwrap();
         assert_eq!(result.file, "flake.nix");
-        assert_eq!(result.refs, vec![LineRef::Add(137)]);
+        assert_eq!(result.refs, vec![LineRef::Add(nz(137))]);
     }
 
     #[test]
     fn parse_addition_range() {
         let result = parse_file_refs("flake.nix:39..43").unwrap();
         assert_eq!(result.file, "flake.nix");
-        assert_eq!(result.refs, vec![LineRef::AddRange(39, 43)]);
+        assert_eq!(result.refs, vec![LineRef::AddRange(nz(39), nz(43))]);
     }
 
     #[test]
     fn parse_multiple_additions() {
         let result = parse_file_refs("default.nix:40,41").unwrap();
         assert_eq!(result.file, "default.nix");
-        assert_eq!(result.refs, vec![LineRef::Add(40), LineRef::Add(41)]);
+        assert_eq!(
+            result.refs,
+            vec![LineRef::Add(nz(40)), LineRef::Add(nz(41))]
+        );
     }
 
     #[test]
     fn parse_single_deletion() {
         let result = parse_file_refs("zsh.nix:-15").unwrap();
         assert_eq!(result.file, "zsh.nix");
-        assert_eq!(result.refs, vec![LineRef::Delete(15)]);
+        assert_eq!(result.refs, vec![LineRef::Delete(nz(15))]);
     }
 
     #[test]
     fn parse_deletion_range() {
         let result = parse_file_refs("gtk.nix:-10..-11").unwrap();
         assert_eq!(result.file, "gtk.nix");
-        assert_eq!(result.refs, vec![LineRef::DeleteRange(10, 11)]);
+        assert_eq!(result.refs, vec![LineRef::DeleteRange(nz(10), nz(11))]);
     }
 
     #[test]
@@ -271,7 +285,11 @@ mod tests {
         assert_eq!(result.file, "gtk.nix");
         assert_eq!(
             result.refs,
-            vec![LineRef::Delete(10), LineRef::Delete(11), LineRef::Add(12)]
+            vec![
+                LineRef::Delete(nz(10)),
+                LineRef::Delete(nz(11)),
+                LineRef::Add(nz(12))
+            ]
         );
     }
 
@@ -281,7 +299,7 @@ mod tests {
         assert_eq!(result.file, "file.nix");
         assert_eq!(
             result.refs,
-            vec![LineRef::AddRange(10, 15), LineRef::Delete(20)]
+            vec![LineRef::AddRange(nz(10), nz(15)), LineRef::Delete(nz(20))]
         );
     }
 
@@ -322,26 +340,26 @@ mod tests {
     #[test]
     fn parse_zero_line_number() {
         let result = parse_file_refs("file.nix:0");
-        assert!(matches!(result, Err(ParseError::ZeroLineNumber)));
+        assert!(matches!(result, Err(ParseError::InvalidLineNumber { .. })));
     }
 
     #[test]
     fn parse_zero_deletion() {
         let result = parse_file_refs("file.nix:-0");
-        assert!(matches!(result, Err(ParseError::ZeroLineNumber)));
+        assert!(matches!(result, Err(ParseError::InvalidLineNumber { .. })));
     }
 
     #[test]
     fn parse_zero_in_range_start() {
         let result = parse_file_refs("file.nix:0..10");
-        assert!(matches!(result, Err(ParseError::ZeroLineNumber)));
+        assert!(matches!(result, Err(ParseError::InvalidLineNumber { .. })));
     }
 
     #[test]
     fn parse_zero_in_range_end() {
         let result = parse_file_refs("file.nix:10..0");
         // Zero check happens before range validation
-        assert!(matches!(result, Err(ParseError::ZeroLineNumber)));
+        assert!(matches!(result, Err(ParseError::InvalidLineNumber { .. })));
     }
 
     #[test]
@@ -366,6 +384,6 @@ mod tests {
     fn parse_equal_range() {
         // 10..10 is valid - it's a single-element range
         let result = parse_file_refs("file.nix:10..10").unwrap();
-        assert_eq!(result.refs, vec![LineRef::AddRange(10, 10)]);
+        assert_eq!(result.refs, vec![LineRef::AddRange(nz(10), nz(10))]);
     }
 }

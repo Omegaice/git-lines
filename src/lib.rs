@@ -58,6 +58,7 @@
 //! - **Code review**: Stage reviewer suggestions line-by-line
 
 use error_set::error_set;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub mod diff;
@@ -108,14 +109,16 @@ error_set! {
 }
 
 /// Main interface for git-stager operations
-pub struct GitStager<'a> {
-    repo_path: &'a str,
+pub struct GitStager {
+    repo_path: PathBuf,
 }
 
-impl<'a> GitStager<'a> {
+impl GitStager {
     /// Create a new GitStager for the given repository path
-    pub fn new(repo_path: &'a str) -> Self {
-        Self { repo_path }
+    pub fn new(repo_path: impl AsRef<Path>) -> Self {
+        Self {
+            repo_path: repo_path.as_ref().to_path_buf(),
+        }
     }
 
     /// Stage specific lines from a file
@@ -151,9 +154,13 @@ impl<'a> GitStager<'a> {
 
     /// Get raw git diff output with zero context lines
     fn get_raw_diff(&self, files: &[String]) -> Result<String, GitCommandError> {
+        let repo_path_str = self
+            .repo_path
+            .to_str()
+            .expect("repo path should be valid UTF-8");
         let mut args = vec![
             "-C",
-            self.repo_path,
+            repo_path_str,
             "diff",
             "--no-ext-diff",
             "-U0",
@@ -196,17 +203,19 @@ impl<'a> GitStager<'a> {
         let filtered = full_diff.retain(
             |_path, old_line| {
                 file_refs.refs.iter().any(|r| match r {
-                    parse::LineRef::Delete(n) => *n == old_line,
+                    parse::LineRef::Delete(n) => n.get() == old_line,
                     parse::LineRef::DeleteRange(start, end) => {
-                        old_line >= *start && old_line <= *end
+                        old_line >= start.get() && old_line <= end.get()
                     }
                     parse::LineRef::Add(_) | parse::LineRef::AddRange(_, _) => false,
                 })
             },
             |_path, new_line| {
                 file_refs.refs.iter().any(|r| match r {
-                    parse::LineRef::Add(n) => *n == new_line,
-                    parse::LineRef::AddRange(start, end) => new_line >= *start && new_line <= *end,
+                    parse::LineRef::Add(n) => n.get() == new_line,
+                    parse::LineRef::AddRange(start, end) => {
+                        new_line >= start.get() && new_line <= end.get()
+                    }
                     parse::LineRef::Delete(_) | parse::LineRef::DeleteRange(_, _) => false,
                 })
             },
@@ -225,10 +234,14 @@ impl<'a> GitStager<'a> {
     fn apply_patch(&self, patch: &str) -> Result<(), GitCommandError> {
         use std::io::Write;
 
+        let repo_path_str = self
+            .repo_path
+            .to_str()
+            .expect("repo path should be valid UTF-8");
         let mut child = Command::new("git")
             .args([
                 "-C",
-                self.repo_path,
+                repo_path_str,
                 "apply",
                 "--cached",
                 "--unidiff-zero",

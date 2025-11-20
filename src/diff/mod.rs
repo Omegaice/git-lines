@@ -60,6 +60,7 @@ pub use full::Diff;
 /// The numbers indicate:
 /// - `-N` - Old line number (for deletions)
 /// - `+N` - New line number (for additions)
+#[must_use]
 pub fn format_diff(diff: &Diff) -> String {
     let mut result = String::new();
 
