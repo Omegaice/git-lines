@@ -16,31 +16,24 @@ impl Diff {
     ///
     /// Files that fail to parse are silently skipped.
     pub fn parse(text: &str) -> Self {
-        let mut files = Vec::new();
-        let mut current_file_text = String::new();
+        let marker = "diff --git ";
 
-        for line in text.lines() {
-            if line.starts_with("diff --git ") {
-                // Start of new file diff - save previous if exists
-                if !current_file_text.is_empty()
-                    && let Some(file_diff) = FileDiff::parse(&current_file_text)
-                {
-                    files.push(file_diff);
-                }
-                current_file_text = line.to_string();
-                current_file_text.push('\n');
-            } else if !current_file_text.is_empty() {
-                current_file_text.push_str(line);
-                current_file_text.push('\n');
-            }
+        // Find all marker positions
+        let indices: Vec<usize> = text.match_indices(marker).map(|(i, _)| i).collect();
+
+        if indices.is_empty() {
+            return Diff { files: Vec::new() };
         }
 
-        // Don't forget the last file
-        if !current_file_text.is_empty()
-            && let Some(file_diff) = FileDiff::parse(&current_file_text)
-        {
-            files.push(file_diff);
-        }
+        // Parse each section between markers
+        let files = indices
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &start)| {
+                let end = indices.get(i + 1).copied().unwrap_or(text.len());
+                FileDiff::parse(&text[start..end])
+            })
+            .collect();
 
         Diff { files }
     }

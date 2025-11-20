@@ -19,48 +19,35 @@ impl FileDiff {
     ///
     /// Returns `None` if the file path cannot be extracted.
     pub fn parse(text: &str) -> Option<Self> {
-        let mut lines = text.lines().peekable();
-        let mut path = String::new();
+        // Extract path from +++ b/... header
+        let path = text
+            .lines()
+            .find_map(|line| line.strip_prefix("+++ b/"))
+            .filter(|p| !p.is_empty())?
+            .to_string();
 
-        // Find file path from +++ b/... header
-        for line in lines.by_ref() {
-            if let Some(p) = line.strip_prefix("+++ b/") {
-                path = p.to_string();
-                break;
-            }
+        // Find first hunk marker
+        let first_hunk_pos = text.find("\n@@ ").map(|i| i + 1)?;
+
+        // Find all subsequent hunk markers
+        let mut indices = vec![first_hunk_pos];
+        let mut search_start = first_hunk_pos + 1;
+
+        while let Some(pos) = text[search_start..].find("\n@@ ") {
+            let abs_pos = search_start + pos + 1; // +1 to skip the newline
+            indices.push(abs_pos);
+            search_start = abs_pos + 1;
         }
 
-        if path.is_empty() {
-            return None;
-        }
-
-        // Parse hunks
-        let mut hunks = Vec::new();
-        let mut current_hunk_text = String::new();
-
-        for line in lines {
-            if line.starts_with("@@ ") {
-                // Start of new hunk - save previous if exists
-                if !current_hunk_text.is_empty()
-                    && let Some(hunk) = Hunk::parse(&current_hunk_text)
-                {
-                    hunks.push(hunk);
-                }
-                current_hunk_text = line.to_string();
-                current_hunk_text.push('\n');
-            } else if line.starts_with('+') || line.starts_with('-') || line.starts_with('\\') {
-                // Content line or "No newline at end of file" marker
-                current_hunk_text.push_str(line);
-                current_hunk_text.push('\n');
-            }
-        }
-
-        // Don't forget the last hunk
-        if !current_hunk_text.is_empty()
-            && let Some(hunk) = Hunk::parse(&current_hunk_text)
-        {
-            hunks.push(hunk);
-        }
+        // Parse each hunk section
+        let hunks = indices
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &start)| {
+                let end = indices.get(i + 1).copied().unwrap_or(text.len());
+                Hunk::parse(&text[start..end])
+            })
+            .collect();
 
         Some(FileDiff { path, hunks })
     }
