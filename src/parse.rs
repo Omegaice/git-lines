@@ -52,6 +52,12 @@ error_set! {
         /// Line number could not be parsed as a valid u32
         #[display("Invalid line number '{value}'")]
         InvalidLineNumber { value: String },
+        /// Line number is zero (line numbers are 1-indexed)
+        #[display("Line number cannot be zero")]
+        ZeroLineNumber,
+        /// Range has start greater than end
+        #[display("Invalid range {start}..{end}: start must be <= end")]
+        InvalidRange { start: u32, end: u32 },
         /// Deletion reference does not start with '-' prefix
         #[display("Delete reference must start with '-', got '{value}'")]
         InvalidDeleteRef { value: String },
@@ -166,15 +172,19 @@ fn parse_single_ref(input: &str) -> Result<LineRef, ParseError> {
     if let Some((start_str, end_str)) = input.split_once("..") {
         // Determine if it's a deletion range
         if start_str.starts_with('-') {
-            Ok(LineRef::DeleteRange(
-                parse_delete_number(start_str)?,
-                parse_delete_number(end_str)?,
-            ))
+            let start = parse_delete_number(start_str)?;
+            let end = parse_delete_number(end_str)?;
+            if start > end {
+                return Err(ParseError::InvalidRange { start, end });
+            }
+            Ok(LineRef::DeleteRange(start, end))
         } else {
-            Ok(LineRef::AddRange(
-                parse_add_number(start_str)?,
-                parse_add_number(end_str)?,
-            ))
+            let start = parse_add_number(start_str)?;
+            let end = parse_add_number(end_str)?;
+            if start > end {
+                return Err(ParseError::InvalidRange { start, end });
+            }
+            Ok(LineRef::AddRange(start, end))
         }
     } else if input.starts_with('-') {
         Ok(LineRef::Delete(parse_delete_number(input)?))
@@ -185,11 +195,15 @@ fn parse_single_ref(input: &str) -> Result<LineRef, ParseError> {
 
 /// Parse a positive line number (for additions)
 fn parse_add_number(input: &str) -> Result<u32, ParseError> {
-    input
+    let num = input
         .parse::<u32>()
         .map_err(|_| ParseError::InvalidLineNumber {
             value: input.to_string(),
-        })
+        })?;
+    if num == 0 {
+        return Err(ParseError::ZeroLineNumber);
+    }
+    Ok(num)
 }
 
 /// Parse a negative line number (for deletions)
@@ -199,11 +213,15 @@ fn parse_delete_number(input: &str) -> Result<u32, ParseError> {
             value: input.to_string(),
         });
     }
-    input[1..]
+    let num = input[1..]
         .parse::<u32>()
         .map_err(|_| ParseError::InvalidLineNumber {
             value: input.to_string(),
-        })
+        })?;
+    if num == 0 {
+        return Err(ParseError::ZeroLineNumber);
+    }
+    Ok(num)
 }
 
 #[cfg(test)]
@@ -299,5 +317,55 @@ mod tests {
     fn parse_just_colon() {
         let result = parse_file_refs(":");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_zero_line_number() {
+        let result = parse_file_refs("file.nix:0");
+        assert!(matches!(result, Err(ParseError::ZeroLineNumber)));
+    }
+
+    #[test]
+    fn parse_zero_deletion() {
+        let result = parse_file_refs("file.nix:-0");
+        assert!(matches!(result, Err(ParseError::ZeroLineNumber)));
+    }
+
+    #[test]
+    fn parse_zero_in_range_start() {
+        let result = parse_file_refs("file.nix:0..10");
+        assert!(matches!(result, Err(ParseError::ZeroLineNumber)));
+    }
+
+    #[test]
+    fn parse_zero_in_range_end() {
+        let result = parse_file_refs("file.nix:10..0");
+        // Zero check happens before range validation
+        assert!(matches!(result, Err(ParseError::ZeroLineNumber)));
+    }
+
+    #[test]
+    fn parse_inverted_range() {
+        let result = parse_file_refs("file.nix:15..10");
+        assert!(matches!(
+            result,
+            Err(ParseError::InvalidRange { start: 15, end: 10 })
+        ));
+    }
+
+    #[test]
+    fn parse_inverted_deletion_range() {
+        let result = parse_file_refs("file.nix:-15..-10");
+        assert!(matches!(
+            result,
+            Err(ParseError::InvalidRange { start: 15, end: 10 })
+        ));
+    }
+
+    #[test]
+    fn parse_equal_range() {
+        // 10..10 is valid - it's a single-element range
+        let result = parse_file_refs("file.nix:10..10").unwrap();
+        assert_eq!(result.refs, vec![LineRef::AddRange(10, 10)]);
     }
 }
