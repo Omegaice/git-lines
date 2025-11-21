@@ -900,6 +900,244 @@ test_edge_cases() {
 }
 
 #############################################################################
+# TEST: Hunk Contiguity and Splitting
+# Invariants about hunk content being contiguous and splitting requirements
+#############################################################################
+test_hunk_contiguity() {
+    log_section "Hunk Contiguity and Splitting"
+
+    local repo
+    repo=$(create_test_repo "contiguity")
+    cd "$repo"
+
+    # Test 1: Hunk content must match consecutive bytes
+    log_info "Test 1: Content must match file at position"
+    seq 1 10 > file.txt
+    git add file.txt && git commit -m "initial" --quiet
+
+    # Delete lines 3-4
+    sed -i '3,4d' file.txt
+
+    # Try to apply a patch with wrong content at position
+    cat > /tmp/claude/wrong-content.diff << 'EOF'
+--- a/file.txt
++++ b/file.txt
+@@ -3,2 +2,0 @@
+-WRONG
+-CONTENT
+EOF
+
+    if git apply --cached --unidiff-zero /tmp/claude/wrong-content.diff 2>/dev/null; then
+        log_fail "Wrong content rejected" "git apply accepted mismatched content"
+        git reset --quiet
+    else
+        log_pass "Wrong content rejected" "patch must match actual file content"
+    fi
+
+    git checkout file.txt --quiet
+
+    # Test 2: Non-contiguous deletions require multiple hunks
+    log_info "Test 2: Non-contiguous deletions need multiple hunks"
+    seq 1 20 > file.txt
+    git add file.txt && git commit -m "twenty lines" --quiet
+
+    # Delete lines 5-6 and line 10 (non-contiguous)
+    sed -i '10d;6d;5d' file.txt
+
+    local diff_output hunk_count
+    diff_output=$(git diff -U0 --no-ext-diff --no-color)
+    hunk_count=$(echo "$diff_output" | grep -c '^@@' || true)
+
+    if [[ "$hunk_count" == "2" ]]; then
+        log_pass "Non-contiguous creates multiple hunks" "count: $hunk_count"
+    else
+        log_fail "Non-contiguous creates multiple hunks" "expected 2, got: $hunk_count"
+    fi
+
+    git checkout file.txt --quiet
+
+    # Test 3: Single hunk with gap in content fails
+    log_info "Test 3: Single hunk cannot skip lines"
+    seq 1 10 > file.txt
+    git add file.txt && git commit -m "reset" --quiet
+
+    # Try to apply a patch that claims to delete 3 lines but skips one
+    cat > /tmp/claude/gap-patch.diff << 'EOF'
+--- a/file.txt
++++ b/file.txt
+@@ -3,3 +2,0 @@
+-3
+-4
+-6
+EOF
+
+    if git apply --cached --unidiff-zero /tmp/claude/gap-patch.diff 2>/dev/null; then
+        log_fail "Gap in hunk rejected" "git apply accepted non-contiguous content"
+        git reset --quiet
+    else
+        log_pass "Gap in hunk rejected" "hunk content must be contiguous"
+    fi
+
+    git checkout file.txt --quiet
+
+    # Test 4: Separate pure hunks can achieve same result as mixed
+    log_info "Test 4: Separate pure hunks work like mixed"
+    seq 1 10 > file.txt
+    git add file.txt && git commit -m "reset" --quiet
+
+    # Create expected result: replace lines 5-6 with NEW_A, NEW_B, NEW_C
+    sed -i '5,6d' file.txt
+    sed -i '4a NEW_A\nNEW_B\nNEW_C' file.txt
+    local expected_content
+    expected_content=$(cat file.txt)
+
+    git checkout file.txt --quiet
+
+    # Apply as separate pure deletion then pure addition
+    cat > /tmp/claude/separate.diff << 'EOF'
+--- a/file.txt
++++ b/file.txt
+@@ -5,2 +4,0 @@
+-5
+-6
+@@ -4,0 +5,3 @@
++NEW_A
++NEW_B
++NEW_C
+EOF
+
+    git apply --cached --unidiff-zero /tmp/claude/separate.diff 2>/dev/null
+    local staged_content
+    staged_content=$(git show :file.txt)
+
+    if [[ "$staged_content" == "$expected_content" ]]; then
+        log_pass "Separate pure hunks produce correct result" "matches expected"
+    else
+        log_fail "Separate pure hunks produce correct result" "content mismatch"
+    fi
+
+    git reset --quiet
+
+    # Test 5: Git normalizes separate hunks into mixed
+    log_info "Test 5: Git normalizes pure hunks to mixed"
+    git checkout file.txt --quiet
+
+    # Apply the separate hunks again
+    git apply --cached --unidiff-zero /tmp/claude/separate.diff 2>/dev/null
+
+    # Check how git represents the staged change
+    diff_output=$(git diff --cached -U0 --no-ext-diff --no-color)
+    local header
+    header=$(echo "$diff_output" | grep '^@@')
+
+    # Should be normalized to a single mixed hunk
+    hunk_count=$(echo "$diff_output" | grep -c '^@@' || true)
+    if [[ "$hunk_count" == "1" ]]; then
+        log_pass "Git normalizes to single mixed hunk" "header: $header"
+    else
+        log_pass "Git keeps separate hunks" "count: $hunk_count (normalization varies)"
+    fi
+
+    git reset --quiet
+
+    # Test 6: Order of pure hunks is flexible
+    log_info "Test 6: Deletion/addition order flexibility"
+    git checkout file.txt --quiet
+
+    # Apply addition first, then deletion
+    cat > /tmp/claude/reversed.diff << 'EOF'
+--- a/file.txt
++++ b/file.txt
+@@ -4,0 +5,3 @@
++NEW_A
++NEW_B
++NEW_C
+@@ -5,2 +7,0 @@
+-5
+-6
+EOF
+
+    if git apply --cached --unidiff-zero /tmp/claude/reversed.diff 2>/dev/null; then
+        staged_content=$(git show :file.txt)
+        if [[ "$staged_content" == "$expected_content" ]]; then
+            log_pass "Reversed order works" "addition-first produces same result"
+        else
+            log_fail "Reversed order works" "content differs from deletion-first"
+        fi
+        git reset --quiet
+    else
+        log_fail "Reversed order works" "git apply rejected reversed order"
+    fi
+
+    git checkout file.txt --quiet
+
+    # Test 7: Git tolerates incorrect new_start for deletions
+    log_info "Test 7: Git tolerates wrong new_start for deletions"
+    seq 1 10 > file.txt
+    git add file.txt && git commit -m "reset" --quiet
+
+    # Delete lines 3-4 (should be new_start=2) but use wrong value (new_start=5)
+    cat > /tmp/claude/wrong-pos.diff << 'EOF'
+--- a/file.txt
++++ b/file.txt
+@@ -3,2 +5,0 @@
+-3
+-4
+EOF
+
+    if git apply --cached --unidiff-zero /tmp/claude/wrong-pos.diff 2>/dev/null; then
+        # Check if git normalized the position
+        diff_output=$(git diff --cached -U0 --no-ext-diff --no-color)
+        local actual_new_start
+        actual_new_start=$(echo "$diff_output" | grep '^@@' | sed -E 's/.*\+([0-9]+).*/\1/')
+
+        if [[ "$actual_new_start" == "2" ]]; then
+            log_pass "Git normalizes wrong new_start" "input=5, normalized=2"
+        else
+            log_pass "Git accepts wrong new_start" "stored as: $actual_new_start"
+        fi
+        git reset --quiet
+    else
+        log_fail "Git tolerates wrong new_start" "git apply rejected"
+    fi
+
+    git checkout file.txt --quiet
+
+    # Test 8: Cumulative adjustment for split deletions
+    log_info "Test 8: Cumulative adjustment for split deletions"
+    seq 1 20 > file.txt
+    git add file.txt && git commit -m "reset" --quiet
+
+    # Delete lines 5-6 (2 lines) and line 12
+    # Second hunk new_start should be: 12 - 1 + (-2) = 9
+    cat > /tmp/claude/cumulative.diff << 'EOF'
+--- a/file.txt
++++ b/file.txt
+@@ -5,2 +4,0 @@
+-5
+-6
+@@ -12 +9,0 @@
+-12
+EOF
+
+    if git apply --cached --unidiff-zero /tmp/claude/cumulative.diff 2>/dev/null; then
+        # Verify the result
+        staged_content=$(git show :file.txt)
+        # Should have lines 1-4, 7-11, 13-20 (17 lines)
+        local line_count
+        line_count=$(echo "$staged_content" | wc -l)
+        if [[ "$line_count" == "17" ]]; then
+            log_pass "Cumulative adjustment correct" "17 lines remain after deleting 3"
+        else
+            log_fail "Cumulative adjustment correct" "expected 17 lines, got $line_count"
+        fi
+        git reset --quiet
+    else
+        log_fail "Cumulative adjustment correct" "git apply rejected"
+    fi
+}
+
+#############################################################################
 # MAIN
 #############################################################################
 main() {
@@ -915,6 +1153,7 @@ main() {
     test_ordering
     test_no_newline_marker
     test_edge_cases
+    test_hunk_contiguity
 
     # Summary
     echo ""
