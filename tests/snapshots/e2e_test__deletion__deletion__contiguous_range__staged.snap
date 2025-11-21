@@ -1,0 +1,12 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index f92d264..fd7cab8 100644
+--- a/file.nix
++++ b/file.nix
+@@ -15,3 +14,0 @@ line 14
+-      enableAutosuggestions = true;
+-      enableCompletion = true;
+-      enableSyntaxHighlighting = true;

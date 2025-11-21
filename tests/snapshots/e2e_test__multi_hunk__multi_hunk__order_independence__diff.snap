@@ -1,0 +1,8 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  +3:	     early_addition();
+
+  +51:	    late_addition();

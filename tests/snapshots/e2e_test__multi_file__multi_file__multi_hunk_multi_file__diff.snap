@@ -1,0 +1,17 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[]).unwrap()"
+---
+lib/core.py:
+  +10:	    import new_module
+
+  +51:	    use_new_module()
+
+lib/helpers.py:
+  -5:	line 5
+
+  +100:	    # New footer
+
+tests/test_core.py:
+  +20:	    def test_new_feature():
+  +21:	        assert True

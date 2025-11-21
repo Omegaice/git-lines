@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.txt\".to_string()]).unwrap()"
+---
+file.txt:
+  -10:	last line
+  +10:	last line
+  +11:	added one
+  +12:	added two
+  +13:	added three

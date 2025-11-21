@@ -1,0 +1,14 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.js b/file.js
+index 36b0f26..fe40560 100644
+--- a/file.js
++++ b/file.js
+@@ -9,0 +10,2 @@ line 9
++    // Add 2 lines here
++    first_new_line();
+@@ -31,2 +32,0 @@ line 30
+-line 31
+-line 32

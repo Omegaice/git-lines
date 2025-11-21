@@ -1,0 +1,12 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.js\".to_string()]).unwrap()"
+---
+file.js:
+  -20:	    # Old implementation
+  -21:	    legacy_function() {
+  -22:	      old_code();
+  +20:	    # New implementation
+  +21:	    modern_function() {
+  +22:	      new_code();
+  +23:	      extra_feature();

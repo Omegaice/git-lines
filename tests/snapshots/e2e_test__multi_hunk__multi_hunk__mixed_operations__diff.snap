@@ -1,0 +1,11 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  +11:	    added_line = true;
+
+  -30:	    deleted_line = false;
+
+  -50:	    old_value = 1;
+  +50:	    new_value = 2;

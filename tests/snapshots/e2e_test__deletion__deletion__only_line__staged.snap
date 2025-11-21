@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.txt b/file.txt
+index b5f64ef..e69de29 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1 +0,0 @@
+-only content

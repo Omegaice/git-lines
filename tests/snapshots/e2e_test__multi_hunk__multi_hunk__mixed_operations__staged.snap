@@ -1,0 +1,12 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 9bc6231..21280cb 100644
+--- a/file.nix
++++ b/file.nix
+@@ -30 +29,0 @@ line 29
+-    deleted_line = false;
+@@ -50 +48,0 @@ line 49
+-    old_value = 1;

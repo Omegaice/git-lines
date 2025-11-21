@@ -1,6 +1,0 @@
----
-source: tests/e2e_test.rs
-expression: "fixture.stager.diff(&[\"flake.nix\".to_string()]).unwrap()"
----
-flake.nix:
-  +137:	      debug = true;

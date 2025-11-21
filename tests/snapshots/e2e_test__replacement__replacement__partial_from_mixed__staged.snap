@@ -1,0 +1,14 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 2064ddc..c37e92e 100644
+--- a/file.nix
++++ b/file.nix
+@@ -10 +10 @@ line 9
+-    setting_a = true;
++    setting_a = false;
+@@ -12 +12 @@ line 9
+-    setting_c = "old";
++    setting_c = "new";

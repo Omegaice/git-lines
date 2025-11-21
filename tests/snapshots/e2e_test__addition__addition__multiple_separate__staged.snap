@@ -1,0 +1,12 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 1ed9d77..b3d330e 100644
+--- a/file.nix
++++ b/file.nix
+@@ -6,0 +7 @@ line 6
++     first_addition = true;
+@@ -43,0 +45 @@ line 43
++    second_addition = true;

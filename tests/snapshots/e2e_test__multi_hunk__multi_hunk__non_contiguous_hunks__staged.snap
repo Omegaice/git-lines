@@ -1,0 +1,12 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 0d36880..62531bf 100644
+--- a/file.nix
++++ b/file.nix
+@@ -19,0 +20,3 @@ line 19
++    line_20 = true;
++    line_22 = true;
++    line_24 = true;

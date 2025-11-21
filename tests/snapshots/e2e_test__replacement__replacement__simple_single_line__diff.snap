@@ -1,0 +1,7 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  -10:	    old_value = "deprecated";
+  +10:	    new_value = "modern";

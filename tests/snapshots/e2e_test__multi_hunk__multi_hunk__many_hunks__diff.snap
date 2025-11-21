@@ -1,0 +1,24 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.js\".to_string()]).unwrap()"
+---
+file.js:
+  +5:	     change_1();
+
+  +16:	     change_2();
+
+  +27:	     change_3();
+
+  +38:	     change_4();
+
+  +49:	     change_5();
+
+  +60:	     change_6();
+
+  +71:	     change_7();
+
+  +82:	     change_8();
+
+  +93:	     change_9();
+
+  +104:	     change_10();

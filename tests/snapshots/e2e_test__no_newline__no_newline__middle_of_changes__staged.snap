@@ -1,0 +1,14 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.txt b/file.txt
+index 3b0e191..f74683a 100644
+--- a/file.txt
++++ b/file.txt
+@@ -5,0 +6 @@ line 5
++early addition
+@@ -20,0 +22 @@ middle line
++after middle
+@@ -25,0 +28 @@ line 25
++late addition

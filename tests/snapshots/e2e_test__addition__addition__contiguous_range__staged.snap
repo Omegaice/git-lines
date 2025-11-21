@@ -1,0 +1,14 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 462392e..0918b28 100644
+--- a/file.nix
++++ b/file.nix
+@@ -38,0 +39,5 @@ line 38
++
++    stylix = {
++      url = "github:danth/stylix";
++      inputs.nixpkgs.follows = "nixpkgs";
++    };

@@ -1,0 +1,9 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[]).unwrap()"
+---
+config.nix:
+  +42:	    feature.enable = true;
+
+flake.nix:
+  +137:	    debug = true;

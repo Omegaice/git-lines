@@ -1,0 +1,12 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/config.nix b/config.nix
+index 79e51de..c160f91 100644
+--- a/config.nix
++++ b/config.nix
+@@ -3 +3 @@ line 2
+-no newline
+\ No newline at end of file
++no newline

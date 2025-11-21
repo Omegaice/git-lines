@@ -1,0 +1,27 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/lib/core.py b/lib/core.py
+index 8a34ce1..812bb93 100644
+--- a/lib/core.py
++++ b/lib/core.py
+@@ -9,0 +10 @@ line 9
++    import new_module
+@@ -49,0 +51 @@ line 49
++    use_new_module()
+diff --git a/lib/helpers.py b/lib/helpers.py
+index 8a34ce1..32a3386 100644
+--- a/lib/helpers.py
++++ b/lib/helpers.py
+@@ -5 +4,0 @@ line 4
+-line 5
+@@ -100,0 +100 @@ line 100
++    # New footer
+diff --git a/tests/test_core.py b/tests/test_core.py
+index 086df9f..3111e51 100644
+--- a/tests/test_core.py
++++ b/tests/test_core.py
+@@ -19,0 +20,2 @@ line 19
++    def test_new_feature():
++        assert True

@@ -1,0 +1,23 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/src/config.js b/src/config.js
+index 2a4079b..07516c5 100644
+--- a/src/config.js
++++ b/src/config.js
+@@ -5 +5 @@ line 4
+-    OLD_VERSION = "1.0";
++    NEW_VERSION = "2.0";
+diff --git a/src/main.js b/src/main.js
+index fa5abf2..113d4f4 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -9,0 +10 @@ line 9
++    new_function();
+diff --git a/src/utils.js b/src/utils.js
+index ff77255..297f320 100644
+--- a/src/utils.js
++++ b/src/utils.js
+@@ -25 +24,0 @@ line 24
+-    deprecated_helper();

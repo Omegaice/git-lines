@@ -1,0 +1,13 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.js\".to_string()]).unwrap()"
+---
+file.js:
+  +10:	    // Add 2 lines here
+  +11:	    first_new_line();
+
+  -31:	line 31
+  -32:	line 32
+  -33:	line 33
+
+  +52:	    // Add 1 line

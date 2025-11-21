@@ -1,0 +1,9 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  -10:	    # Header to remove
+  -11:	    old_setting = true;
+  +10:	    new_setting = false;
+  +11:	    added_setting = true;

@@ -1,0 +1,13 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[]).unwrap()"
+---
+src/config.js:
+  -5:	    OLD_VERSION = "1.0";
+  +5:	    NEW_VERSION = "2.0";
+
+src/main.js:
+  +10:	    new_function();
+
+src/utils.js:
+  -25:	    deprecated_helper();

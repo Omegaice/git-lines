@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.js b/file.js
+index ba8dd98..88066ca 100644
+--- a/file.js
++++ b/file.js
+@@ -4,0 +5 @@ line 4
++     change_1();

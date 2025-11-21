@@ -1,0 +1,12 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 5578ccb..8005f81 100644
+--- a/file.nix
++++ b/file.nix
+@@ -9,0 +10,3 @@ line 9
++    debug.enable = true;
++    debug.verbose = true;
++    feature.enable = true;

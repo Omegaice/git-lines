@@ -1,0 +1,13 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.js\".to_string()]).unwrap()"
+---
+file.js:
+  -5:	     const OLD_CONSTANT = 42;
+  +5:	     const NEW_CONSTANT = 100;
+
+  -25:	    deprecatedMethod() {}
+  +25:	    modernMethod() {}
+
+  -80:	    // Old comment
+  +80:	    // Updated comment

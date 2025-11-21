@@ -1,0 +1,23 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/src/components/Footer.jsx b/src/components/Footer.jsx
+index 5ec00ca..d976e02 100644
+--- a/src/components/Footer.jsx
++++ b/src/components/Footer.jsx
+@@ -29,0 +30 @@ line 29
++    <Copyright year={2024} />
+diff --git a/src/components/Header.jsx b/src/components/Header.jsx
+index c4352f8..0ae6b63 100644
+--- a/src/components/Header.jsx
++++ b/src/components/Header.jsx
+@@ -14,0 +15 @@ line 14
++    <NewElement />
+diff --git a/src/utils/helpers/format.js b/src/utils/helpers/format.js
+index b09bfc6..537be95 100644
+--- a/src/utils/helpers/format.js
++++ b/src/utils/helpers/format.js
+@@ -10 +10 @@ line 9
+-    oldFormat(data)
++    newFormat(data)

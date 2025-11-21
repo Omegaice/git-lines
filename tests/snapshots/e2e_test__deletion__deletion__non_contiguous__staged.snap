@@ -1,0 +1,13 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index bc546cf..5bfc344 100644
+--- a/file.nix
++++ b/file.nix
+@@ -11,2 +10,0 @@ line 9
+-    deprecated_setting = true;
+-    another_deprecated = true;
+@@ -14 +11,0 @@ line 9
+-    legacy_feature = true;

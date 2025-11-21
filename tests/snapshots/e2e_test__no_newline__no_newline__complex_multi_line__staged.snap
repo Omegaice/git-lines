@@ -1,0 +1,15 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.txt b/file.txt
+index 3fc7948..06df0db 100644
+--- a/file.txt
++++ b/file.txt
+@@ -10 +10,3 @@ line 9
+-last line
+\ No newline at end of file
++last line
++added one
++added three
+\ No newline at end of file

@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  +20:	    line_20 = true;
+  +21:	    line_21 = true;
+  +22:	    line_22 = true;
+  +23:	    line_23 = true;
+  +24:	    line_24 = true;

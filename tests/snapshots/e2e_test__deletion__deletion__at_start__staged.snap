@@ -1,0 +1,11 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.sh b/file.sh
+index c13dff9..33af241 100644
+--- a/file.sh
++++ b/file.sh
+@@ -1,2 +0,0 @@
+-#!/usr/bin/env bash
+-# Old header comment

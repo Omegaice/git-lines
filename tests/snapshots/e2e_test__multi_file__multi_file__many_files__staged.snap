@@ -1,0 +1,34 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file1.txt b/file1.txt
+index 89b24ec..b26a34f 100644
+--- a/file1.txt
++++ b/file1.txt
+@@ -1,0 +2 @@ line 1
++change1
+diff --git a/file2.txt b/file2.txt
+index 7bba8c8..891176b 100644
+--- a/file2.txt
++++ b/file2.txt
+@@ -2,0 +3 @@ line 2
++change2
+diff --git a/file3.txt b/file3.txt
+index a92d664..9d3bb2c 100644
+--- a/file3.txt
++++ b/file3.txt
+@@ -3,0 +4 @@ line 3
++change3
+diff --git a/file4.txt b/file4.txt
+index 9c2a709..afebd38 100644
+--- a/file4.txt
++++ b/file4.txt
+@@ -4,0 +5 @@ line 4
++change4
+diff --git a/file5.txt b/file5.txt
+index 94c99a3..5d660e5 100644
+--- a/file5.txt
++++ b/file5.txt
+@@ -5,0 +6 @@ line 5
++change5

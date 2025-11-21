@@ -1,0 +1,16 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.js b/file.js
+index 3334625..b5df19d 100644
+--- a/file.js
++++ b/file.js
+@@ -20,3 +20,4 @@ line 19
+-    # Old implementation
+-    legacy_function() {
+-      old_code();
++    # New implementation
++    modern_function() {
++      new_code();
++      extra_feature();

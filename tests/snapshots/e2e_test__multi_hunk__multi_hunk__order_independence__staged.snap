@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 3b67373..5310c6c 100644
+--- a/file.nix
++++ b/file.nix
+@@ -2,0 +3 @@ line 2
++     early_addition();

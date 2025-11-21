@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 478fcd5..73585be 100644
+--- a/file.nix
++++ b/file.nix
+@@ -26 +25,0 @@ line 24
+-    deprecated = true;

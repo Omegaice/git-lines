@@ -1,0 +1,6 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.txt\".to_string()]).unwrap()"
+---
+file.txt:
+  -1:	only content

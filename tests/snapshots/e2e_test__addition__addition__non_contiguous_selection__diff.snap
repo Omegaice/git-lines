@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  +10:	    # TODO: Remove after testing
+  +11:	    debug.enable = true;
+  +12:	    debug.verbose = true;
+  +13:	    # Another comment
+  +14:	    feature.enable = true;

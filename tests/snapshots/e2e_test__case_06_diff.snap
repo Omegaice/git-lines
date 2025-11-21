@@ -1,9 +1,0 @@
----
-source: tests/e2e_test.rs
-expression: "fixture.stager.diff(&[]).unwrap()"
----
-flake.nix:
-  +137:	      debug = true;
-
-gtk.nix:
-  +12:	    gtk.cursorTheme.size = 24;

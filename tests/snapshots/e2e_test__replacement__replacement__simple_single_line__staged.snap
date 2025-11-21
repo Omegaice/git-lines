@@ -1,0 +1,11 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 524c23b..eefd05f 100644
+--- a/file.nix
++++ b/file.nix
+@@ -10 +10 @@ line 9
+-    old_value = "deprecated";
++    new_value = "modern";

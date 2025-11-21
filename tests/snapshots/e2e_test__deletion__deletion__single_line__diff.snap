@@ -1,0 +1,6 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  -15:	      enableAutosuggestions = true;

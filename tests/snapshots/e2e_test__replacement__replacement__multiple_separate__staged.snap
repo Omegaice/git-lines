@@ -1,0 +1,14 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.js b/file.js
+index ef29dfc..7e4325a 100644
+--- a/file.js
++++ b/file.js
+@@ -5 +5 @@ line 4
+-     const OLD_CONSTANT = 42;
++     const NEW_CONSTANT = 100;
+@@ -25 +25 @@ line 24
+-    deprecatedMethod() {}
++    modernMethod() {}

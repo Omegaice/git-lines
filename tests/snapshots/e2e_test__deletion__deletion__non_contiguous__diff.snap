@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  -10:	    # Old comment
+  -11:	    deprecated_setting = true;
+  -12:	    another_deprecated = true;
+  -13:	    # Another old comment
+  -14:	    legacy_feature = true;

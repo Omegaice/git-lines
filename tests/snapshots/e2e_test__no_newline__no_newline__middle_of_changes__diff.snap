@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.txt\".to_string()]).unwrap()"
+---
+file.txt:
+  +6:	early addition
+
+  +22:	after middle
+
+  +28:	late addition

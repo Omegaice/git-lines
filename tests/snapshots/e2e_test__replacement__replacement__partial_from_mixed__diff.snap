@@ -1,0 +1,11 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  -10:	    setting_a = true;
+  +10:	    setting_a = false;
+
+  -12:	    setting_c = "old";
+  +12:	    setting_c = "new";
+  +13:	    setting_d = true;

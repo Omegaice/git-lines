@@ -1,0 +1,11 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 50bc307..fa3eceb 100644
+--- a/file.nix
++++ b/file.nix
+@@ -30 +30 @@ line 29
+-    verbose_old_style_config();
++    cfg();

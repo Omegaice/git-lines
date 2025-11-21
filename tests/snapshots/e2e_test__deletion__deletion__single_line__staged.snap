@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 6f2e06d..110fff0 100644
+--- a/file.nix
++++ b/file.nix
+@@ -15 +14,0 @@ line 14
+-      enableAutosuggestions = true;

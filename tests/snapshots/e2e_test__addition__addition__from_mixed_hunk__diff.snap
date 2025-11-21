@@ -1,0 +1,10 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  -25:	    old_setting = true;
+  -26:	    deprecated = true;
+  +25:	    new_setting = false;
+  +26:	    modern = true;
+  +27:	    additional = true;

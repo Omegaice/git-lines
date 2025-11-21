@@ -1,0 +1,13 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[]).unwrap()"
+---
+src/components/Footer.jsx:
+  +30:	    <Copyright year={2024} />
+
+src/components/Header.jsx:
+  +15:	    <NewElement />
+
+src/utils/helpers/format.js:
+  -10:	    oldFormat(data)
+  +10:	    newFormat(data)

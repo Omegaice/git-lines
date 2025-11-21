@@ -1,8 +1,0 @@
----
-source: tests/e2e_test.rs
-expression: "fixture.stager.diff(&[\"config.nix\".to_string()]).unwrap()"
----
-config.nix:
-  +3:	# FIRST INSERTION
-
-  +10:	# SECOND INSERTION
