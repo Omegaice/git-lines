@@ -210,6 +210,8 @@ This document specifies patches with multiple hunks within a single file.
    - File header (`--- a/file` and `+++ b/file`) appears once
 
 5. **Non-Contiguous Selection Rules**:
+   - Hunk content MUST be contiguous (consecutive lines from the file)
+   - Git rejects patches where a single hunk claims non-consecutive lines
    - Skipping lines in a contiguous block creates separate hunks
    - Each selected region becomes its own hunk
    - Position calculations must account for all prior hunks
