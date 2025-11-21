@@ -77,7 +77,8 @@ impl FileDiff {
         let mut cumulative_deletions: i32 = 0;
 
         for hunk in &self.hunks {
-            if let Some(mut filtered) = hunk.retain(&mut keep_old, &mut keep_new) {
+            // Now returns Vec<Hunk> instead of Option<Hunk>
+            for mut filtered in hunk.retain(&mut keep_old, &mut keep_new) {
                 // Adjust new_start by cumulative effect of previous filtered hunks
                 let adjustment = cumulative_additions - cumulative_deletions;
                 filtered.new.start = (filtered.new.start as i32 + adjustment) as u32;
