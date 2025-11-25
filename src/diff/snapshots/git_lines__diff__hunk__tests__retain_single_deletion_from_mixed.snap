@@ -1,6 +1,0 @@
----
-source: src/diff/hunk.rs
-expression: filtered.to_string()
----
-@@ -11 +10,0 @@
--deleted two

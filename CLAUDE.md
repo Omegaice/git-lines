@@ -56,12 +56,8 @@ When adding new functionality: document in corpus first, then implement test.
 
 ## Known Gotchas
 
-### Line numbers shift after insertions
-When staging from multiple hunks, earlier insertions shift later line numbers:
-```
-Insert after line 6 → line 137 becomes 138, line 142 becomes 143
-```
-The diff output shows correct numbers; just don't use stale numbers from before a partial stage.
+### Line numbers are stable after staging
+Line numbers from `git lines diff` remain valid after partial staging. They always refer to working tree line numbers, which don't change until you edit the file. You can safely run multiple `git lines stage` commands using line numbers from the same initial `git lines diff` output.
 
 ### Diff header lines look like deletions
 `--- a/file` starts with `-` but is not a deletion line. Must check for `--- a/` prefix before treating as deletion content. Same for `+++ b/` and additions.

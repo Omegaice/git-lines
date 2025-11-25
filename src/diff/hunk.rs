@@ -21,6 +21,44 @@ pub struct ModifiedLines {
     pub missing_final_newline: bool,
 }
 
+/// Result of filtering a hunk's content.
+///
+/// This is an intermediate representation that separates the "what lines were kept"
+/// question from the "how to structure output hunks" question. The caller (FileDiff)
+/// decides how to build hunks from this content.
+///
+/// # Key Insight
+///
+/// Additions and deletions have different position semantics:
+/// - **Deletions** reference specific positions in the old file. Each deletion
+///   has a unique position that must be preserved.
+/// - **Additions** share a single insertion point. All additions in a hunk are
+///   inserted at the same place (after `insertion_point`).
+///
+/// This asymmetry means:
+/// - Non-contiguous deletions may need multiple hunks (different old positions)
+/// - Non-contiguous additions stay together (same insertion point)
+#[derive(Debug, PartialEq, Eq)]
+pub struct FilteredContent {
+    /// The insertion point for additions (original hunk's old.start).
+    /// All additions are inserted "after this line" in the old file.
+    pub insertion_point: u32,
+
+    /// Kept deletions with their original OLD line positions.
+    /// Each deletion references a specific line in the old file.
+    pub deletions: Vec<(u32, String)>,
+
+    /// Kept additions (content only - position is implicit via insertion_point).
+    /// All additions go to the same place, so we don't need individual positions.
+    pub additions: Vec<String>,
+
+    /// Whether the original old content's last line lacked a trailing newline
+    pub old_missing_newline: bool,
+
+    /// Whether the filtered additions' last line should lack a trailing newline
+    pub new_missing_newline: bool,
+}
+
 /// A single hunk from a git diff.
 ///
 /// A hunk represents one contiguous block of changes in a file. With `-U0`
@@ -57,7 +95,11 @@ impl Hunk {
         parse_hunk(text).ok().map(|(_, hunk)| hunk)
     }
 
-    /// Filter lines in the hunk, returning new hunks with only matching lines.
+    /// Filter lines in the hunk, returning the filtered content.
+    ///
+    /// This method only filters - it does NOT decide how to structure output hunks.
+    /// The caller (FileDiff) is responsible for building hunks from the returned
+    /// FilteredContent, which allows proper handling of the addition/deletion asymmetry.
     ///
     /// # Parameters
     ///
@@ -66,23 +108,8 @@ impl Hunk {
     ///
     /// # Returns
     ///
-    /// A vector of hunks containing only the lines where predicates returned `true`.
-    /// Returns an empty vector if no lines matched either predicate.
-    ///
-    /// # Non-Contiguous Selection Splitting
-    ///
-    /// When the kept lines have gaps (non-contiguous), this method splits them into
-    /// multiple hunks. Git requires hunk content to be contiguous - you cannot skip
-    /// lines within a single hunk. Each contiguous group becomes a separate pure
-    /// deletion or pure addition hunk.
-    ///
-    /// Git will normalize these separate pure hunks back into mixed hunks when they
-    /// are at the same position.
-    ///
-    /// # Line Number Recalculation
-    ///
-    /// For pure deletions: `new_start = old_start - 1`
-    /// For pure additions: `new_start = old_start + 1`
+    /// - `Some(FilteredContent)` with the kept lines
+    /// - `None` if no lines matched either predicate
     ///
     /// # No-Newline Bridge Synthesis
     ///
@@ -90,7 +117,7 @@ impl Hunk {
     /// the method automatically includes the old deletion to provide the required
     /// newline separator. This prevents corrupted git index state.
     #[must_use]
-    pub fn retain<F, G>(&self, keep_old: F, keep_new: G) -> Vec<Self>
+    pub fn filter<F, G>(&self, keep_old: F, keep_new: G) -> Option<FilteredContent>
     where
         F: FnMut(u32) -> bool,
         G: FnMut(u32) -> bool,
@@ -100,132 +127,27 @@ impl Hunk {
         let mut new_filtered = filter_lines(&self.new, keep_new);
 
         if old_filtered.is_empty() && new_filtered.is_empty() {
-            return vec![];
+            return None;
         }
 
         // Phase 2: Insert separator if needed
         // When the original last line had no newline and we're adding content after it,
         // we must include that line (deleted then re-added) to provide line separation
-        let bridge_synthesized = requires_line_separator(&self.old, &new_filtered);
-        if bridge_synthesized {
+        if requires_line_separator(&self.old, &new_filtered) {
             insert_line_separator(&self.old, &mut old_filtered, &mut new_filtered);
         }
 
-        // Phase 3: Group into contiguous runs
-        let old_groups = group_contiguous(&old_filtered);
-        let new_groups = group_contiguous(&new_filtered);
+        // Track no-newline state
+        let old_missing_newline = old_filtered.kept_last_boundary && self.old.missing_final_newline;
+        let new_missing_newline = new_filtered.kept_last_boundary && self.new.missing_final_newline;
 
-        // Phase 4: Check if splitting is needed
-        // Don't split if bridge was synthesized - the bridge must stay with its additions
-        let needs_split = !bridge_synthesized && (old_groups.len() > 1 || new_groups.len() > 1);
-
-        if !needs_split {
-            // No gaps - return single hunk using existing logic
-            let old_start = old_filtered.first_line_num().unwrap_or(self.old.start);
-
-            // Check if we kept all lines (idempotence case)
-            let kept_all = !self.old.lines.is_empty()
-                && !self.new.lines.is_empty()
-                && old_filtered.lines.len() == self.old.lines.len()
-                && new_filtered.lines.len() == self.new.lines.len();
-
-            let new_start = if kept_all {
-                self.new.start
-            } else if old_filtered.is_empty() {
-                old_start + 1 // Pure insertion
-            } else if new_filtered.is_empty() {
-                old_start.saturating_sub(1) // Pure deletion
-            } else {
-                new_filtered.first_line_num().unwrap_or(self.new.start) // Mixed
-            };
-
-            return vec![Hunk {
-                old: ModifiedLines {
-                    start: old_start,
-                    lines: old_filtered.lines.into_iter().map(|(_, c)| c).collect(),
-                    missing_final_newline: old_filtered.kept_last_boundary
-                        && self.old.missing_final_newline,
-                },
-                new: ModifiedLines {
-                    start: new_start,
-                    lines: new_filtered.lines.into_iter().map(|(_, c)| c).collect(),
-                    missing_final_newline: new_filtered.kept_last_boundary
-                        && self.new.missing_final_newline,
-                },
-            }];
-        }
-
-        // Phase 5: Split into pure hunks
-        let mut hunks = Vec::new();
-
-        // Create pure deletion hunks for each old group
-        for group in old_groups {
-            let old_start = group.first_line_num;
-            let new_start = old_start.saturating_sub(1);
-
-            // Check if this group contains the last line for no-newline tracking
-            let last_old_line_num = self.old.start + self.old.lines.len() as u32 - 1;
-            let group_has_last = group
-                .lines
-                .last()
-                .map(|(num, _)| *num == last_old_line_num)
-                .unwrap_or(false);
-
-            hunks.push(Hunk {
-                old: ModifiedLines {
-                    start: old_start,
-                    lines: group
-                        .lines
-                        .into_iter()
-                        .map(|(_, content)| content)
-                        .collect(),
-                    missing_final_newline: group_has_last && self.old.missing_final_newline,
-                },
-                new: ModifiedLines {
-                    start: new_start,
-                    lines: vec![],
-                    missing_final_newline: false,
-                },
-            });
-        }
-
-        // Create pure addition hunks for each new group
-        for group in new_groups {
-            let first_new_line = group.first_line_num;
-            // For insertion, old_start is the line before the insertion point
-            let old_start = first_new_line.saturating_sub(1);
-            let new_start = old_start + 1;
-
-            // Check if this group contains the last line for no-newline tracking
-            let last_new_line_num = self.new.start + self.new.lines.len() as u32 - 1;
-            let group_has_last = group
-                .lines
-                .last()
-                .map(|(num, _)| *num == last_new_line_num)
-                .unwrap_or(false);
-
-            hunks.push(Hunk {
-                old: ModifiedLines {
-                    start: old_start,
-                    lines: vec![],
-                    missing_final_newline: false,
-                },
-                new: ModifiedLines {
-                    start: new_start,
-                    lines: group
-                        .lines
-                        .into_iter()
-                        .map(|(_, content)| content)
-                        .collect(),
-                    missing_final_newline: group_has_last && self.new.missing_final_newline,
-                },
-            });
-        }
-
-        // Sort by old_start to maintain proper order
-        hunks.sort_by_key(|h| h.old.start);
-
-        hunks
+        Some(FilteredContent {
+            insertion_point: self.old.start,
+            deletions: old_filtered.lines,
+            additions: new_filtered.lines.into_iter().map(|(_, c)| c).collect(),
+            old_missing_newline,
+            new_missing_newline,
+        })
     }
 }
 
@@ -240,10 +162,6 @@ struct FilterResult {
 impl FilterResult {
     fn is_empty(&self) -> bool {
         self.lines.is_empty()
-    }
-
-    fn first_line_num(&self) -> Option<u32> {
-        self.lines.first().map(|(num, _)| *num)
     }
 }
 
@@ -321,24 +239,24 @@ fn insert_line_separator(
 }
 
 /// A contiguous group of lines
-struct ContiguousGroup {
-    first_line_num: u32,
-    lines: Vec<(u32, String)>,
+pub(crate) struct ContiguousGroup {
+    pub first_line_num: u32,
+    pub lines: Vec<(u32, String)>,
 }
 
-/// Group filtered lines into contiguous runs
+/// Group lines into contiguous runs
 ///
 /// When there are gaps in line numbers (e.g., lines 3, 4, 6), this splits
 /// them into separate groups (e.g., [3, 4] and [6]).
-fn group_contiguous(filtered: &FilterResult) -> Vec<ContiguousGroup> {
-    if filtered.lines.is_empty() {
+pub(crate) fn group_contiguous_lines(lines: &[(u32, String)]) -> Vec<ContiguousGroup> {
+    if lines.is_empty() {
         return vec![];
     }
 
     let mut groups: Vec<ContiguousGroup> = Vec::new();
     let mut current_group: Vec<(u32, String)> = Vec::new();
 
-    for (line_num, content) in &filtered.lines {
+    for (line_num, content) in lines {
         if current_group.is_empty() {
             // Start first group
             current_group.push((*line_num, content.clone()));
@@ -694,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn retain_single_addition_from_mixed() {
+    fn filter_single_addition_from_mixed() {
         let hunk = Hunk {
             old: ModifiedLines {
                 start: 10,
@@ -712,32 +630,17 @@ mod tests {
             },
         };
 
-        let filtered = hunk
-            .retain(|_| false, |n| n == 12)
-            .into_iter()
-            .next()
-            .unwrap();
+        let filtered = hunk.filter(|_| false, |n| n == 12).unwrap();
 
-        // When filtering to only additions (no deletions), new_start is recalculated
-        // as old_start + 1, since insertions appear right after the old position
-        let expected = Hunk {
-            old: ModifiedLines {
-                start: 10,
-                lines: vec![],
-                missing_final_newline: false,
-            },
-            new: ModifiedLines {
-                start: 11, // 10 + 1, not preserved 12
-                lines: vec!["added three".to_string()],
-                missing_final_newline: false,
-            },
-        };
-        assert_eq!(filtered, expected);
-        assert_eq!(filtered.to_string(), "@@ -10,0 +11 @@\n+added three\n");
+        // When filtering to only additions, deletions should be empty
+        // and additions should contain only the selected line
+        assert!(filtered.deletions.is_empty());
+        assert_eq!(filtered.additions, vec!["added three".to_string()]);
+        assert_eq!(filtered.insertion_point, 10);
     }
 
     #[test]
-    fn retain_single_deletion_from_mixed() {
+    fn filter_single_deletion_from_mixed() {
         let hunk = Hunk {
             old: ModifiedLines {
                 start: 10,
@@ -751,18 +654,16 @@ mod tests {
             },
         };
 
-        let filtered = hunk
-            .retain(|o| o == 11, |_| false)
-            .into_iter()
-            .next()
-            .unwrap();
+        let filtered = hunk.filter(|o| o == 11, |_| false).unwrap();
 
-        // When filtering to only deletions, verify the output format
-        insta::assert_snapshot!(filtered.to_string());
+        // When filtering to only deletions, additions should be empty
+        // and deletions should contain the selected line with its position
+        assert!(filtered.additions.is_empty());
+        assert_eq!(filtered.deletions, vec![(11, "deleted two".to_string())]);
     }
 
     #[test]
-    fn retain_nothing_returns_none() {
+    fn filter_nothing_returns_none() {
         let hunk = Hunk {
             old: ModifiedLines {
                 start: 10,
@@ -776,12 +677,12 @@ mod tests {
             },
         };
 
-        let filtered = hunk.retain(|_| false, |_| false);
-        assert!(filtered.is_empty());
+        let filtered = hunk.filter(|_| false, |_| false);
+        assert!(filtered.is_none());
     }
 
     #[test]
-    fn retain_subset_of_additions() {
+    fn filter_subset_of_additions() {
         let hunk = Hunk {
             old: ModifiedLines {
                 start: 9,
@@ -799,30 +700,15 @@ mod tests {
             },
         };
 
-        let filtered = hunk
-            .retain(|_| false, |n| n >= 11)
-            .into_iter()
-            .next()
-            .unwrap();
+        let filtered = hunk.filter(|_| false, |n| n >= 11).unwrap();
 
-        // Pure insertion: new_start = old_start + 1
-        let expected = Hunk {
-            old: ModifiedLines {
-                start: 9,
-                lines: vec![],
-                missing_final_newline: false,
-            },
-            new: ModifiedLines {
-                start: 10, // 9 + 1, not preserved 11
-                lines: vec!["line eleven".to_string(), "line twelve".to_string()],
-                missing_final_newline: false,
-            },
-        };
-        assert_eq!(filtered, expected);
+        // Should keep the last two additions
+        assert!(filtered.deletions.is_empty());
         assert_eq!(
-            filtered.to_string(),
-            "@@ -9,0 +10,2 @@\n+line eleven\n+line twelve\n"
+            filtered.additions,
+            vec!["line eleven".to_string(), "line twelve".to_string()]
         );
+        assert_eq!(filtered.insertion_point, 9);
     }
 
     #[test]
@@ -927,7 +813,10 @@ mod tests {
     }
 
     #[test]
-    fn retain_non_contiguous_lines() {
+    fn filter_non_contiguous_additions() {
+        // Non-contiguous selection of additions should return all selected
+        // additions in FilteredContent. The hunk-building (single vs multiple)
+        // is now handled by FileDiff::retain.
         let hunk = Hunk {
             old: ModifiedLines {
                 start: 9,
@@ -946,48 +835,20 @@ mod tests {
             },
         };
 
-        let filtered: Vec<_> = hunk.retain(|_| false, |n| n == 10 || n == 12);
+        let filtered = hunk.filter(|_| false, |n| n == 10 || n == 12).unwrap();
 
-        // Non-contiguous selection should produce multiple hunks
+        // Should have both selected additions
+        assert!(filtered.deletions.is_empty());
         assert_eq!(
-            filtered.len(),
-            2,
-            "Expected 2 hunks for non-contiguous selection"
+            filtered.additions,
+            vec!["ten".to_string(), "twelve".to_string()]
         );
-
-        // First hunk: line 10
-        let expected1 = Hunk {
-            old: ModifiedLines {
-                start: 9,
-                lines: vec![],
-                missing_final_newline: false,
-            },
-            new: ModifiedLines {
-                start: 10,
-                lines: vec!["ten".to_string()],
-                missing_final_newline: false,
-            },
-        };
-        assert_eq!(filtered[0], expected1);
-
-        // Second hunk: line 12
-        let expected2 = Hunk {
-            old: ModifiedLines {
-                start: 11,
-                lines: vec![],
-                missing_final_newline: false,
-            },
-            new: ModifiedLines {
-                start: 12,
-                lines: vec!["twelve".to_string()],
-                missing_final_newline: false,
-            },
-        };
-        assert_eq!(filtered[1], expected2);
+        // Insertion point is the original old.start
+        assert_eq!(filtered.insertion_point, 9);
     }
 
     #[test]
-    fn retain_mixed_partial_selection() {
+    fn filter_mixed_partial_selection() {
         let hunk = Hunk {
             old: ModifiedLines {
                 start: 10,
@@ -1009,29 +870,12 @@ mod tests {
             },
         };
 
-        let filtered = hunk
-            .retain(|o| o == 11, |n| n == 12)
-            .into_iter()
-            .next()
-            .unwrap();
+        let filtered = hunk.filter(|o| o == 11, |n| n == 12).unwrap();
 
-        let expected = Hunk {
-            old: ModifiedLines {
-                start: 11,
-                lines: vec!["old two".to_string()],
-                missing_final_newline: false,
-            },
-            new: ModifiedLines {
-                start: 12,
-                lines: vec!["new three".to_string()],
-                missing_final_newline: false,
-            },
-        };
-        assert_eq!(filtered, expected);
-        assert_eq!(
-            filtered.to_string(),
-            "@@ -11 +12 @@\n-old two\n+new three\n"
-        );
+        // Should have one deletion at position 11 and one addition
+        assert_eq!(filtered.deletions, vec![(11, "old two".to_string())]);
+        assert_eq!(filtered.additions, vec!["new three".to_string()]);
+        assert_eq!(filtered.insertion_point, 10);
     }
 
     // =========================================================================
@@ -1126,62 +970,51 @@ mod tests {
     }
 
     #[test]
-    fn retain_preserves_missing_newline_when_last_kept() {
+    fn filter_preserves_missing_newline_when_last_kept() {
         // Multiple additions, last one has no newline marker
         let text =
             "@@ -5,0 +6,2 @@\n+first addition\n+second addition\n\\ No newline at end of file";
         let hunk = Hunk::parse(text).unwrap();
 
         // Keep only last line (line 7)
-        let filtered = hunk
-            .retain(|_| false, |n| n == 7)
-            .into_iter()
-            .next()
-            .unwrap();
+        let filtered = hunk.filter(|_| false, |n| n == 7).unwrap();
 
-        // Should preserve the no-newline marker since we kept the last line
-        assert_eq!(
-            filtered.to_string(),
-            "@@ -5,0 +6 @@\n+second addition\n\\ No newline at end of file\n"
-        );
+        // Should preserve the no-newline flag since we kept the last line
+        assert_eq!(filtered.additions, vec!["second addition".to_string()]);
+        assert!(filtered.new_missing_newline);
     }
 
     #[test]
-    fn retain_clears_missing_newline_when_last_filtered() {
+    fn filter_clears_missing_newline_when_last_filtered() {
         // Multiple additions, last one has no newline marker
         let text =
             "@@ -5,0 +6,2 @@\n+first addition\n+second addition\n\\ No newline at end of file";
         let hunk = Hunk::parse(text).unwrap();
 
         // Keep only first line (line 6), not the last
-        let filtered = hunk
-            .retain(|_| false, |n| n == 6)
-            .into_iter()
-            .next()
-            .unwrap();
+        let filtered = hunk.filter(|_| false, |n| n == 6).unwrap();
 
-        // Should NOT have no-newline marker since we didn't keep the last line
-        assert_eq!(filtered.to_string(), "@@ -5,0 +6 @@\n+first addition\n");
+        // Should NOT have no-newline flag since we didn't keep the last line
+        assert_eq!(filtered.additions, vec!["first addition".to_string()]);
+        assert!(!filtered.new_missing_newline);
     }
 
     #[test]
-    fn retain_mixed_with_old_missing_newline() {
+    fn filter_mixed_with_old_missing_newline() {
         // Replacement where old line had no newline
         let text =
             "@@ -10 +10 @@\n-old content\n\\ No newline at end of file\n+new content with newline";
         let hunk = Hunk::parse(text).unwrap();
 
         // Keep only the addition
-        let filtered = hunk
-            .retain(|_| false, |n| n == 10)
-            .into_iter()
-            .next()
-            .unwrap();
+        let filtered = hunk.filter(|_| false, |n| n == 10).unwrap();
 
-        // Old's no-newline marker should not appear since we filtered out deletions
+        // Old's no-newline should not be set since we filtered out deletions
+        assert!(filtered.deletions.is_empty());
+        assert!(!filtered.old_missing_newline);
         assert_eq!(
-            filtered.to_string(),
-            "@@ -10,0 +11 @@\n+new content with newline\n"
+            filtered.additions,
+            vec!["new content with newline".to_string()]
         );
     }
 }
@@ -1346,193 +1179,114 @@ mod proptests {
             );
         }
 
-        /// The core property: filtered hunks must round-trip through render/parse
-        ///
-        /// This catches:
-        /// - Line number recalculation bugs
-        /// - Header generation bugs
-        /// - No-newline marker handling bugs
-        /// - Any state inconsistency between fields
+        /// Filter all: filtering with (true, true) must return all content
         #[test]
-        fn filtered_hunk_roundtrips(
-            hunk in arb_hunk(),
-            keep_old in arb_line_set(),
-            keep_new in arb_line_set()
-        ) {
-            for filtered in hunk.retain(
-                |l| keep_old.contains(&l),
-                |l| keep_new.contains(&l)
-            ) {
-                // The filtered hunk must render and parse back to itself
-                let rendered = filtered.to_string();
-                let parsed = Hunk::parse(&rendered);
+        fn filter_all_returns_all_content(hunk in arb_hunk()) {
+            prop_assume!(!hunk.old.lines.is_empty() || !hunk.new.lines.is_empty());
 
-                prop_assert!(
-                    parsed.is_some(),
-                    "Failed to parse rendered hunk:\n{}\nOriginal: {:?}\nFiltered: {:?}",
-                    rendered, hunk, filtered
-                );
-
-                prop_assert_eq!(
-                    parsed.unwrap(),
-                    filtered,
-                    "Round-trip failed for:\n{}",
-                    rendered
-                );
-            }
-        }
-
-        /// Idempotence: retaining all lines of a mixed hunk must return the original
-        ///
-        /// This validates that retain doesn't accidentally modify mixed hunks
-        /// when all lines are kept. Pure insertions/deletions are excluded because
-        /// they correctly recalculate new_start for standalone patch format.
-        #[test]
-        fn retain_all_is_identity(hunk in arb_hunk()) {
-            // Only test mixed hunks (both old and new have lines)
-            prop_assume!(!hunk.old.lines.is_empty() && !hunk.new.lines.is_empty());
-
-            let retained = hunk.retain(|_| true, |_| true);
+            let filtered = hunk.filter(|_| true, |_| true);
 
             prop_assert!(
-                !retained.is_empty(),
-                "retain(true, true) returned empty for non-empty hunk: {:?}",
+                filtered.is_some(),
+                "filter(true, true) returned None for non-empty hunk: {:?}",
                 hunk
             );
 
+            let filtered = filtered.unwrap();
             prop_assert_eq!(
-                retained.into_iter().next().unwrap(),
-                hunk,
-                "retain(true, true) modified the hunk"
+                filtered.deletions.len(),
+                hunk.old.lines.len(),
+                "Should keep all deletions"
+            );
+            prop_assert_eq!(
+                filtered.additions.len(),
+                hunk.new.lines.len(),
+                "Should keep all additions"
             );
         }
 
-        /// Empty filter: retaining nothing must return None
+        /// Empty filter: filtering nothing must return None
         #[test]
-        fn retain_none_is_none(hunk in arb_hunk()) {
-            let retained = hunk.retain(|_| false, |_| false);
+        fn filter_none_returns_none(hunk in arb_hunk()) {
+            let filtered = hunk.filter(|_| false, |_| false);
             prop_assert!(
-                retained.is_empty(),
-                "retain(false, false) returned Some for: {:?}",
+                filtered.is_none(),
+                "filter(false, false) returned Some for: {:?}",
                 hunk
             );
         }
 
-        /// Pure insertion recalculation: new_start must equal old_start + 1
-        ///
-        /// When a hunk has only additions (no deletions), the new content
-        /// appears right after the old position, so new_start = old_start + 1.
+        /// Filter preserves insertion point
         #[test]
-        fn pure_insertion_new_start_is_old_start_plus_one(hunk in arb_pure_insertion()) {
-            // Retain all additions
-            let retained = hunk.retain(|_| false, |_| true).into_iter().next().unwrap();
+        fn filter_preserves_insertion_point(hunk in arb_hunk()) {
+            prop_assume!(!hunk.new.lines.is_empty());
+
+            let filtered = hunk.filter(|_| false, |_| true).unwrap();
 
             prop_assert_eq!(
-                retained.new.start,
-                retained.old.start + 1,
-                "Pure insertion should have new_start = old_start + 1, got {:?}",
-                retained
-            );
-        }
-
-        /// Mixed to pure insertion: filtering out deletions recalculates correctly
-        #[test]
-        fn mixed_to_pure_insertion_recalculates(hunk in arb_hunk()) {
-            // Skip hunks that don't have both old and new lines
-            prop_assume!(!hunk.old.lines.is_empty() && !hunk.new.lines.is_empty());
-
-            // Filter to only additions (becomes pure insertion)
-            let retained = hunk.retain(|_| false, |_| true).into_iter().next().unwrap();
-
-            prop_assert_eq!(
-                retained.new.start,
-                retained.old.start + 1,
-                "Mixed→pure insertion should have new_start = old_start + 1, got {:?}",
-                retained
+                filtered.insertion_point,
+                hunk.old.start,
+                "Insertion point should be original old.start"
             );
         }
 
         /// Bridge synthesis: when filtering additions after a no-newline line,
         /// the bridge content must be auto-included to provide line separation.
-        ///
-        /// Without bridge synthesis, git apply would concatenate lines.
         #[test]
         fn bridge_synthesis_includes_separator(hunk in arb_bridge_scenario()) {
             // Skip the first addition (the bridge), keep only subsequent additions
-            // This should trigger bridge synthesis
             let first_new_line = hunk.new.start;
-            let retained = hunk.retain(
-                |_| false,
-                |l| l > first_new_line
-            );
+            let filtered = hunk.filter(|_| false, |l| l > first_new_line);
 
-            // Should have a result (bridge was synthesized)
             prop_assert!(
-                !retained.is_empty(),
+                filtered.is_some(),
                 "Bridge synthesis should produce a result for: {:?}",
                 hunk
             );
 
-            let retained = retained.into_iter().next().unwrap();
+            let filtered = filtered.unwrap();
 
-            // The bridge must be included: old deletion + new addition of same content
+            // The bridge must be included: deletion of old line
             prop_assert!(
-                !retained.old.lines.is_empty(),
-                "Bridge synthesis must include old deletion: {:?}",
-                retained
+                !filtered.deletions.is_empty(),
+                "Bridge synthesis must include deletion: {:?}",
+                filtered
             );
 
+            // First addition should be the bridge content (same as the deletion)
+            let bridge_content = &filtered.deletions.last().unwrap().1;
             prop_assert!(
-                !retained.new.lines.is_empty(),
-                "Bridge synthesis must include new addition: {:?}",
-                retained
+                filtered.additions.first() == Some(bridge_content),
+                "Bridge content must match: deletions={:?}, additions={:?}",
+                filtered.deletions, filtered.additions
             );
-
-            // First line of new should be the bridge content (same as old)
-            prop_assert_eq!(
-                retained.old.lines.last(),
-                retained.new.lines.first(),
-                "Bridge content must match: old={:?}, new={:?}",
-                retained.old, retained.new
-            );
-
-            // Result must still round-trip
-            let rendered = retained.to_string();
-            let parsed = Hunk::parse(&rendered);
-            prop_assert!(parsed.is_some(), "Bridge result must parse: {}", rendered);
-            prop_assert_eq!(parsed.unwrap(), retained);
         }
 
         /// Subset invariant: filtered result must only contain lines from original
-        ///
-        /// This catches data corruption or incorrect bridge synthesis content.
-        /// Note: Bridge synthesis may copy old content to new, so new lines
-        /// can come from either hunk.new OR hunk.old.
         #[test]
         fn filtered_is_subset_of_original(
             hunk in arb_hunk(),
             keep_old in arb_line_set(),
             keep_new in arb_line_set()
         ) {
-            for filtered in hunk.retain(
+            if let Some(filtered) = hunk.filter(
                 |l| keep_old.contains(&l),
                 |l| keep_new.contains(&l)
             ) {
-                // Every line in filtered.old must exist in hunk.old
-                for line in &filtered.old.lines {
+                // Every deletion must exist in hunk.old
+                for (_, line) in &filtered.deletions {
                     prop_assert!(
                         hunk.old.lines.contains(line),
-                        "Filtered old line {:?} not in original {:?}",
+                        "Filtered deletion {:?} not in original {:?}",
                         line, hunk.old.lines
                     );
                 }
 
-                // Every line in filtered.new must exist in hunk.new OR hunk.old
-                // (bridge synthesis copies old content to new)
-                for line in &filtered.new.lines {
+                // Every addition must exist in hunk.new OR hunk.old (bridge synthesis)
+                for line in &filtered.additions {
                     prop_assert!(
                         hunk.new.lines.contains(line) || hunk.old.lines.contains(line),
-                        "Filtered new line {:?} not in original new {:?} or old {:?}",
+                        "Filtered addition {:?} not in original new {:?} or old {:?}",
                         line, hunk.new.lines, hunk.old.lines
                     );
                 }
@@ -1585,9 +1339,6 @@ mod proptests {
         }
 
         /// Realistic hunks should round-trip correctly
-        ///
-        /// Uses the realistic generator that produces structurally valid hunks
-        /// (pure insertions, pure deletions, replacements) rather than arbitrary ones.
         #[test]
         fn realistic_hunk_roundtrips(hunk in arb_realistic_hunk()) {
             let rendered = hunk.to_string();
@@ -1605,34 +1356,6 @@ mod proptests {
                 "Round-trip failed for realistic hunk:\n{}",
                 rendered
             );
-        }
-
-        /// Filtered realistic hunks should round-trip
-        #[test]
-        fn filtered_realistic_hunk_roundtrips(
-            hunk in arb_realistic_hunk(),
-            keep_old in arb_line_set(),
-            keep_new in arb_line_set()
-        ) {
-            for filtered in hunk.retain(
-                |l| keep_old.contains(&l),
-                |l| keep_new.contains(&l)
-            ) {
-                let rendered = filtered.to_string();
-                let parsed = Hunk::parse(&rendered);
-
-                prop_assert!(
-                    parsed.is_some(),
-                    "Failed to parse filtered realistic hunk:\n{}",
-                    rendered
-                );
-
-                prop_assert_eq!(
-                    parsed.unwrap(),
-                    filtered,
-                    "Round-trip failed for filtered realistic hunk"
-                );
-            }
         }
     }
 }
