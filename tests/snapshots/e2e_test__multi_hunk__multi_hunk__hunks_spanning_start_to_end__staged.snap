@@ -1,0 +1,14 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 9f02138..8439bfd 100644
+--- a/file.nix
++++ b/file.nix
+@@ -0,0 +1 @@
++     prepended_line;
+@@ -25,0 +27 @@ line 25
++    middle_addition;
+@@ -50,0 +53 @@ line 50
++    appended_line;

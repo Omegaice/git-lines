@@ -1,0 +1,9 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  -1:	line 1
+  +1:	modified line 1
+
+  +15:	    addition_in_middle = true;

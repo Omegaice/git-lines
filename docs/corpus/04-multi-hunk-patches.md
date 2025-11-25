@@ -54,11 +54,11 @@ This document specifies patches with multiple hunks within a single file.
 +    new_value = 2;
 ```
 
-## 4.3: Non-Contiguous Selection Creating Multiple Hunks
+## 4.3: Non-Contiguous Selection from Single Insertion Point
 
-**Purpose**: Verify that non-contiguous selections from single diff create separate hunks.
+**Purpose**: Verify that non-contiguous selections from additions at the same insertion point remain consecutive in a single hunk.
 
-**Input Diff**:
+**Input Diff** (additions at end of file, after line 19):
 ```
   +20:     line_20 = true;
   +21:     line_21 = true;
@@ -71,13 +71,13 @@ This document specifies patches with multiple hunks within a single file.
 
 **Expected Patch**:
 ```diff
-@@ -19,0 +20 @@
+@@ -19,0 +20,3 @@
 +    line_20 = true;
-@@ -20,0 +22 @@
 +    line_22 = true;
-@@ -21,0 +24 @@
 +    line_24 = true;
 ```
+
+**Note**: All additions share the same insertion point (after line 19), so selected lines stay together regardless of gaps. This differs from selections across truly separate hunks (see 4.1).
 
 ## 4.4: Cumulative Position Tracking
 
@@ -174,6 +174,105 @@ This document specifies patches with multiple hunks within a single file.
 @@ -49,0 +51 @@
 +    late_addition();
 ```
+
+## 4.7: Hunk at Start of File
+
+**Purpose**: Verify correct handling when first hunk is at line 1 (boundary condition).
+
+**Initial File** (20 lines):
+```
+line 1
+line 2
+...
+line 20
+```
+
+**Input Diff**:
+```
+  -1:      line 1
+  +1:      modified line 1
+
+  +15:     addition_in_middle = true;
+```
+
+**Command**: `git-lines stage file.nix:-1,1,15`
+
+**Expected Patch**:
+```diff
+@@ -1 +1 @@
+-line 1
++modified line 1
+@@ -14,0 +15 @@
++    addition_in_middle = true;
+```
+
+**Note**: First hunk uses `old_start = 1`. Cumulative adjustment applies normally to subsequent hunks.
+
+## 4.8: Hunk at End of File
+
+**Purpose**: Verify correct handling when last hunk is at final line (boundary condition).
+
+**Initial File** (20 lines):
+```
+line 1
+...
+line 20
+```
+
+**Input Diff**:
+```
+  +5:      early_addition = true;
+
+  -20:     line 20
+  +20:     modified line 20
+```
+
+**Command**: `git-lines stage file.nix:5,-20,20`
+
+**Expected Patch**:
+```diff
+@@ -4,0 +5 @@
++     early_addition = true;
+@@ -20 +21 @@
+-line 20
++modified line 20
+```
+
+**Note**: Last hunk position adjusted by cumulative delta from earlier hunks. Final line replacement must account for prior additions.
+
+## 4.9: Hunks Spanning Start to End
+
+**Purpose**: Verify cumulative tracking across full file span.
+
+**Initial File** (50 lines):
+```
+line 1
+...
+line 50
+```
+
+**Input Diff**:
+```
+  +1:      prepended_line;
+
+  +25:     middle_addition;
+
+  +51:     appended_line;
+```
+
+**Command**: `git-lines stage file.nix:1,25,51`
+
+**Expected Patch**:
+```diff
+@@ -0,0 +1 @@
++     prepended_line;
+@@ -24,0 +26 @@
++    middle_addition;
+@@ -50,0 +53 @@
++    appended_line;
+```
+
+**Note**: Tests all three positions (start/middle/end) in single patch. Each hunk's position reflects cumulative additions from prior hunks.
 
 ## Implementation Requirements
 

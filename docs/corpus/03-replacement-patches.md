@@ -149,6 +149,92 @@ This document specifies all valid ways to generate replacement patches (delete +
 +    new_setting = false;
 ```
 
+## 3.7: Replacement at Start of File
+
+**Purpose**: Verify replacement when modifying line 1 (boundary condition).
+
+**Initial File**:
+```
+old_first_line
+line 2
+line 3
+...
+```
+
+**Input Diff**:
+```
+  -1:      old_first_line
+  +1:      new_first_line
+```
+
+**Command**: `git-lines stage file.nix:-1,1`
+
+**Expected Patch**:
+```diff
+@@ -1 +1 @@
+-old_first_line
++new_first_line
+```
+
+**Note**: First line uses `old_start = 1`. This is the minimum valid line number.
+
+## 3.8: Replacement at End of File
+
+**Purpose**: Verify replacement when modifying the last line (boundary condition).
+
+**Initial File** (10 lines):
+```
+line 1
+...
+line 9
+old_last_line
+```
+
+**Input Diff**:
+```
+  -10:     old_last_line
+  +10:     new_last_line
+```
+
+**Command**: `git-lines stage file.nix:-10,10`
+
+**Expected Patch**:
+```diff
+@@ -10 +10 @@
+-old_last_line
++new_last_line
+```
+
+**Note**: Last line replacement. Position remains unchanged as there are no prior hunks affecting cumulative delta.
+
+## 3.9: Replacement at Start with No-Newline
+
+**Purpose**: Verify replacement of first line when file lacks trailing newline.
+
+**Initial File** (no trailing newline):
+```
+old_first_line
+line 2
+line 3
+```
+
+**Input Diff**:
+```
+  -1:      old_first_line
+  +1:      new_first_line
+```
+
+**Command**: `git-lines stage file.nix:-1,1`
+
+**Expected Patch**:
+```diff
+@@ -1 +1 @@
+-old_first_line
++new_first_line
+```
+
+**Note**: First line replacement is unaffected by trailing newline status of file.
+
 ## Implementation Requirements
 
 ### Critical Git Invariants

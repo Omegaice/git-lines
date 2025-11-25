@@ -1,0 +1,7 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  -1:	old_first_line
+  +1:	new_first_line

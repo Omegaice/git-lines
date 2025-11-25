@@ -248,6 +248,68 @@ mod addition {
         f.stager.stage("file.nix:30,32..34").unwrap();
         insta::assert_snapshot!("addition__complex_range_mix__staged", f.git_diff_cached());
     }
+
+    /// 1.7: Non-Contiguous Selection (Mid-File Insertion)
+    #[test]
+    fn non_contiguous_mid_file() {
+        let f = Fixture::new();
+        let initial = Fixture::numbered_lines(10);
+        f.write_file("file.nix", &initial);
+        f.stage_file("file.nix");
+        f.commit("initial");
+
+        // Insert 4 lines after line 2 (in the middle of the file)
+        let mut lines: Vec<String> = (1..=10).map(|i| format!("line {}", i)).collect();
+        lines.insert(2, "    addition_a = true;".to_string());
+        lines.insert(3, "    addition_b = true;".to_string());
+        lines.insert(4, "    addition_c = true;".to_string());
+        lines.insert(5, "    addition_d = true;".to_string());
+        let modified = lines.join("\n") + "\n";
+        f.write_file("file.nix", &modified);
+
+        insta::assert_snapshot!(
+            "addition__non_contiguous_mid_file__diff",
+            f.stager.diff(&["file.nix".to_string()]).unwrap()
+        );
+        // Select lines 3 and 5 (addition_a and addition_c, skipping addition_b)
+        f.stager.stage("file.nix:3,5").unwrap();
+        insta::assert_snapshot!(
+            "addition__non_contiguous_mid_file__staged",
+            f.git_diff_cached()
+        );
+    }
+
+    /// 1.8: Non-Contiguous Selection (Start-of-File Insertion)
+    #[test]
+    fn non_contiguous_start_of_file() {
+        let f = Fixture::new();
+        let initial = Fixture::numbered_lines(5);
+        f.write_file("file.nix", &initial);
+        f.stage_file("file.nix");
+        f.commit("initial");
+
+        // Insert 4 lines at the start of the file (before line 1)
+        let mut lines: Vec<String> = vec![
+            "    addition_a = true;".to_string(),
+            "    addition_b = true;".to_string(),
+            "    addition_c = true;".to_string(),
+            "    addition_d = true;".to_string(),
+        ];
+        lines.extend((1..=5).map(|i| format!("line {}", i)));
+        let modified = lines.join("\n") + "\n";
+        f.write_file("file.nix", &modified);
+
+        insta::assert_snapshot!(
+            "addition__non_contiguous_start_of_file__diff",
+            f.stager.diff(&["file.nix".to_string()]).unwrap()
+        );
+        // Select lines 1 and 3 (addition_a and addition_c, skipping addition_b)
+        f.stager.stage("file.nix:1,3").unwrap();
+        insta::assert_snapshot!(
+            "addition__non_contiguous_start_of_file__staged",
+            f.git_diff_cached()
+        );
+    }
 }
 
 // =============================================================================
@@ -639,6 +701,74 @@ mod replacement {
         f.stager.stage("file.nix:-11,10").unwrap();
         insta::assert_snapshot!("replacement__complex_mixed__staged", f.git_diff_cached());
     }
+
+    /// 3.7: Replacement at Start of File
+    #[test]
+    fn at_start() {
+        let f = Fixture::new();
+        let mut lines: Vec<String> = vec!["old_first_line".to_string()];
+        lines.extend((2..=10).map(|i| format!("line {}", i)));
+        let initial = lines.join("\n") + "\n";
+        f.write_file("file.nix", &initial);
+        f.stage_file("file.nix");
+        f.commit("initial");
+
+        lines[0] = "new_first_line".to_string();
+        let modified = lines.join("\n") + "\n";
+        f.write_file("file.nix", &modified);
+
+        insta::assert_snapshot!(
+            "replacement__at_start__diff",
+            f.stager.diff(&["file.nix".to_string()]).unwrap()
+        );
+        f.stager.stage("file.nix:-1,1").unwrap();
+        insta::assert_snapshot!("replacement__at_start__staged", f.git_diff_cached());
+    }
+
+    /// 3.8: Replacement at End of File
+    #[test]
+    fn at_end() {
+        let f = Fixture::new();
+        let mut lines: Vec<String> = (1..=9).map(|i| format!("line {}", i)).collect();
+        lines.push("old_last_line".to_string());
+        let initial = lines.join("\n") + "\n";
+        f.write_file("file.nix", &initial);
+        f.stage_file("file.nix");
+        f.commit("initial");
+
+        lines[9] = "new_last_line".to_string();
+        let modified = lines.join("\n") + "\n";
+        f.write_file("file.nix", &modified);
+
+        insta::assert_snapshot!(
+            "replacement__at_end__diff",
+            f.stager.diff(&["file.nix".to_string()]).unwrap()
+        );
+        f.stager.stage("file.nix:-10,10").unwrap();
+        insta::assert_snapshot!("replacement__at_end__staged", f.git_diff_cached());
+    }
+
+    /// 3.9: Replacement at Start with No-Newline
+    #[test]
+    fn at_start_no_newline() {
+        let f = Fixture::new();
+        // File without trailing newline
+        f.write_file("file.nix", "old_first_line\nline 2\nline 3");
+        f.stage_file("file.nix");
+        f.commit("initial");
+
+        f.write_file("file.nix", "new_first_line\nline 2\nline 3");
+
+        insta::assert_snapshot!(
+            "replacement__at_start_no_newline__diff",
+            f.stager.diff(&["file.nix".to_string()]).unwrap()
+        );
+        f.stager.stage("file.nix:-1,1").unwrap();
+        insta::assert_snapshot!(
+            "replacement__at_start_no_newline__staged",
+            f.git_diff_cached()
+        );
+    }
 }
 
 // =============================================================================
@@ -823,6 +953,82 @@ mod multi_hunk {
         f.stager.stage("file.nix:50,3").unwrap();
         insta::assert_snapshot!(
             "multi_hunk__order_independence__staged",
+            f.git_diff_cached()
+        );
+    }
+
+    /// 4.7: Hunk at Start of File
+    #[test]
+    fn hunk_at_start() {
+        let f = Fixture::new();
+        let mut lines: Vec<String> = (1..=20).map(|i| format!("line {}", i)).collect();
+        let initial = lines.join("\n") + "\n";
+        f.write_file("file.nix", &initial);
+        f.stage_file("file.nix");
+        f.commit("initial");
+
+        // Replace line 1 and add at line 15
+        lines[0] = "modified line 1".to_string();
+        lines.insert(14, "    addition_in_middle = true;".to_string());
+        let modified = lines.join("\n") + "\n";
+        f.write_file("file.nix", &modified);
+
+        insta::assert_snapshot!(
+            "multi_hunk__hunk_at_start__diff",
+            f.stager.diff(&["file.nix".to_string()]).unwrap()
+        );
+        f.stager.stage("file.nix:-1,1,15").unwrap();
+        insta::assert_snapshot!("multi_hunk__hunk_at_start__staged", f.git_diff_cached());
+    }
+
+    /// 4.8: Hunk at End of File
+    #[test]
+    fn hunk_at_end() {
+        let f = Fixture::new();
+        let mut lines: Vec<String> = (1..=20).map(|i| format!("line {}", i)).collect();
+        let initial = lines.join("\n") + "\n";
+        f.write_file("file.nix", &initial);
+        f.stage_file("file.nix");
+        f.commit("initial");
+
+        // Add at line 5 and replace line 20
+        lines.insert(4, "     early_addition = true;".to_string());
+        lines[20] = "modified line 20".to_string(); // Now at index 20 due to insertion
+        let modified = lines.join("\n") + "\n";
+        f.write_file("file.nix", &modified);
+
+        insta::assert_snapshot!(
+            "multi_hunk__hunk_at_end__diff",
+            f.stager.diff(&["file.nix".to_string()]).unwrap()
+        );
+        f.stager.stage("file.nix:5,-20,20").unwrap();
+        insta::assert_snapshot!("multi_hunk__hunk_at_end__staged", f.git_diff_cached());
+    }
+
+    /// 4.9: Hunks Spanning Start to End
+    #[test]
+    fn hunks_spanning_start_to_end() {
+        let f = Fixture::new();
+        let initial = Fixture::numbered_lines(50);
+        f.write_file("file.nix", &initial);
+        f.stage_file("file.nix");
+        f.commit("initial");
+
+        // Add at start (line 1), middle (line 26), and end (line 52)
+        let mut lines: Vec<String> = (1..=50).map(|i| format!("line {}", i)).collect();
+        lines.insert(0, "     prepended_line;".to_string());
+        lines.insert(26, "    middle_addition;".to_string()); // After original line 25
+        lines.push("    appended_line;".to_string());
+        let modified = lines.join("\n") + "\n";
+        f.write_file("file.nix", &modified);
+
+        insta::assert_snapshot!(
+            "multi_hunk__hunks_spanning_start_to_end__diff",
+            f.stager.diff(&["file.nix".to_string()]).unwrap()
+        );
+        f.stager.stage("file.nix:1,27,53").unwrap();
+        insta::assert_snapshot!(
+            "multi_hunk__hunks_spanning_start_to_end__staged",
             f.git_diff_cached()
         );
     }

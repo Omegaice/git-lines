@@ -1,0 +1,11 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index 94c99a3..c873f2e 100644
+--- a/file.nix
++++ b/file.nix
+@@ -0,0 +1,2 @@
++    addition_a = true;
++    addition_c = true;

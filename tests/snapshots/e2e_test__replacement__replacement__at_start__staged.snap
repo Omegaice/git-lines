@@ -1,0 +1,11 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index b0c72da..3a6be79 100644
+--- a/file.nix
++++ b/file.nix
+@@ -1 +1 @@
+-old_first_line
++new_first_line

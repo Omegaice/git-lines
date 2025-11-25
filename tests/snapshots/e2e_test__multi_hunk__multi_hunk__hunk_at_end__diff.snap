@@ -1,0 +1,9 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  +5:	     early_addition = true;
+
+  -20:	line 20
+  +21:	modified line 20

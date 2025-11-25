@@ -1,0 +1,9 @@
+---
+source: tests/e2e_test.rs
+expression: "f.stager.diff(&[\"file.nix\".to_string()]).unwrap()"
+---
+file.nix:
+  +3:	    addition_a = true;
+  +4:	    addition_b = true;
+  +5:	    addition_c = true;
+  +6:	    addition_d = true;

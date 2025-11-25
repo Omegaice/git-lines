@@ -1,0 +1,13 @@
+---
+source: tests/e2e_test.rs
+expression: f.git_diff_cached()
+---
+diff --git a/file.nix b/file.nix
+index c4352f8..38f7005 100644
+--- a/file.nix
++++ b/file.nix
+@@ -1 +1 @@
+-line 1
++modified line 1
+@@ -14,0 +15 @@ line 14
++    addition_in_middle = true;

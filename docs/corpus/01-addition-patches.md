@@ -136,6 +136,69 @@ This document specifies all valid ways to generate addition-only patches.
 +    line_34 = true;
 ```
 
+## 1.7: Non-Contiguous Selection (Mid-File Insertion)
+
+**Purpose**: Verify non-contiguous selection when additions are inserted in the middle of a file (content exists both before and after the insertion point).
+
+**Initial File** (10 lines):
+```
+line 1
+line 2
+line 3
+...
+line 10
+```
+
+**Input Diff** (insertions after line 2, before line 3):
+```
+  +3:     addition_a = true;
+  +4:     addition_b = true;
+  +5:     addition_c = true;
+  +6:     addition_d = true;
+```
+
+**Command**: `git-lines stage file.nix:3,5`
+
+**Expected Patch**:
+```diff
+@@ -2,0 +3,2 @@
++    addition_a = true;
++    addition_c = true;
+```
+
+**Note**: All selected lines must remain consecutive in the output patch, anchored to the original insertion point (after line 2). The gap in selection (skipping line 4) does not create separate hunks.
+
+## 1.8: Non-Contiguous Selection (Start-of-File Insertion)
+
+**Purpose**: Verify non-contiguous selection when additions are inserted at the start of a file (content exists only after the insertion point).
+
+**Initial File** (5 lines):
+```
+line 1
+line 2
+...
+line 5
+```
+
+**Input Diff** (insertions before line 1):
+```
+  +1:     addition_a = true;
+  +2:     addition_b = true;
+  +3:     addition_c = true;
+  +4:     addition_d = true;
+```
+
+**Command**: `git-lines stage file.nix:1,3`
+
+**Expected Patch**:
+```diff
+@@ -0,0 +1,2 @@
++    addition_a = true;
++    addition_c = true;
+```
+
+**Note**: Start-of-file insertions use `old_start = 0` in the hunk header. Selected lines remain consecutive regardless of gaps in selection.
+
 ## Implementation Requirements
 
 ### Critical Git Invariants
