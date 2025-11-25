@@ -8,6 +8,5 @@
   },
   "repository": "https://github.com/Omegaice/git-lines",
   "license": "MIT",
-  "keywords": ["git", "staging", "commits", "line-level"],
-  "category": "development"
+  "keywords": ["git", "staging", "commits", "line-level"]
 }
