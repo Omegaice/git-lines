@@ -1,0 +1,13 @@
+{
+  "name": "git-lines",
+  "description": "Line-level git staging for LLMs and automation",
+  "version": "0.1.0",
+  "author": {
+    "name": "Omegaice",
+    "url": "https://github.com/Omegaice"
+  },
+  "repository": "https://github.com/Omegaice/git-lines",
+  "license": "MIT",
+  "keywords": ["git", "staging", "commits", "line-level"],
+  "category": "development"
+}

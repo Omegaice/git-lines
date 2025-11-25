@@ -1,0 +1,17 @@
+{
+  "name": "git-lines",
+  "owner": {
+    "name": "Omegaice",
+    "url": "https://github.com/Omegaice"
+  },
+  "plugins": [
+    {
+      "name": "git-lines",
+      "description": "Line-level git staging for LLMs and automation",
+      "source": "./",
+      "version": "0.1.0",
+      "keywords": ["git", "staging", "commits"],
+      "category": "development"
+    }
+  ]
+}
