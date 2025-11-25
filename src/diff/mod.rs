@@ -22,7 +22,7 @@
 //! # Example
 //!
 //! ```
-//! use git_stager::diff::Diff;
+//! use git_lines::diff::Diff;
 //!
 //! let raw_diff = r#"diff --git a/file.txt b/file.txt
 //! --- a/file.txt
@@ -46,7 +46,7 @@ pub use full::Diff;
 /// Format a git diff for user display with explicit line numbers.
 ///
 /// Converts a parsed diff into a human-readable format showing line numbers
-/// for each addition and deletion, suitable for `git-stager diff` output.
+/// for each addition and deletion, suitable for `git lines diff` output.
 ///
 /// # Format
 ///

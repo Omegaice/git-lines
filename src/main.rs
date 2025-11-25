@@ -1,21 +1,21 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use clap_mangen::Man;
-use git_stager::GitStager;
+use git_lines::GitLines;
 use std::io;
 
 #[derive(Parser)]
-#[command(name = "git-stager")]
+#[command(name = "git-lines")]
 #[command(version)]
 #[command(about = "Non-interactive line-level git staging tool")]
 #[command(long_about = concat!(
     "Non-interactive line-level git staging tool\n\n",
     "Stage specific lines from git diffs when hunks are too coarse.\n",
-    "Use 'git-stager diff' to see line numbers, then 'git-stager stage' to select lines.\n\n",
+    "Use 'git lines diff' to see line numbers, then 'git lines stage' to select lines.\n\n",
     "Repository: ", env!("CARGO_PKG_REPOSITORY")
 ))]
 struct Cli {
-    /// Run as if git-stager was started in <path> instead of the current working directory
+    /// Run as if git-lines was started in <path> instead of the current working directory
     #[arg(short = 'C', global = true)]
     path: Option<String>,
 
@@ -28,7 +28,7 @@ enum Commands {
     /// Stage specific lines from unstaged changes
     ///
     /// Select individual changed lines to stage, even from within contiguous
-    /// changes. Line numbers come from `git-stager diff` output.
+    /// changes. Line numbers come from `git lines diff` output.
     ///
     /// Syntax: FILE:REFS
     ///   N         stage addition at new line N
@@ -67,7 +67,7 @@ enum Commands {
     ///     +11:    extra_setting = true;
     ///
     /// To stage only the replacement (skip +11):
-    ///   git-stager stage config.nix:-10,10
+    ///   git lines stage config.nix:-10,10
     #[command(verbatim_doc_comment)]
     Diff {
         /// Files to show diff for (defaults to all changed files)
@@ -78,17 +78,17 @@ enum Commands {
     /// Install completions for your shell:
     ///
     /// Bash:
-    ///   git-stager completions bash > ~/.local/share/bash-completion/completions/git-stager
+    ///   git-lines completions bash > ~/.local/share/bash-completion/completions/git-lines
     ///
     /// Zsh:
-    ///   git-stager completions zsh > ~/.zfunc/_git-stager
+    ///   git-lines completions zsh > ~/.zfunc/_git-lines
     ///   (and add ~/.zfunc to your $fpath in .zshrc)
     ///
     /// Fish:
-    ///   git-stager completions fish > ~/.config/fish/completions/git-stager.fish
+    ///   git-lines completions fish > ~/.config/fish/completions/git-lines.fish
     ///
     /// PowerShell:
-    ///   git-stager completions powershell > git-stager.ps1
+    ///   git-lines completions powershell > git-lines.ps1
     #[command(verbatim_doc_comment)]
     Completions {
         /// The shell to generate completions for
@@ -98,12 +98,12 @@ enum Commands {
     ///
     /// Install the man page:
     ///
-    ///   git-stager man > git-stager.1
-    ///   sudo mv git-stager.1 /usr/local/share/man/man1/
+    ///   git-lines man > git-lines.1
+    ///   sudo mv git-lines.1 /usr/local/share/man/man1/
     ///   sudo mandb
     ///
     /// Then view with:
-    ///   man git-stager
+    ///   man git-lines
     #[command(verbatim_doc_comment)]
     Man,
 }
@@ -114,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
-            generate(shell, &mut cmd, "git-stager", &mut io::stdout());
+            generate(shell, &mut cmd, "git-lines", &mut io::stdout());
         }
         Commands::Man => {
             let cmd = Cli::command();
@@ -123,7 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Stage { file_refs } => {
             let repo_path = cli.path.as_deref().unwrap_or(".");
-            let stager = GitStager::new(repo_path);
+            let stager = GitLines::new(repo_path);
             for file_ref in &file_refs {
                 stager
                     .stage(file_ref)
@@ -132,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Diff { files } => {
             let repo_path = cli.path.as_deref().unwrap_or(".");
-            let stager = GitStager::new(repo_path);
+            let stager = GitLines::new(repo_path);
             let output = stager
                 .diff(&files)
                 .map_err(|e| format!("Failed to get diff: {}", e))?;

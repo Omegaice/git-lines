@@ -15,7 +15,7 @@ config.nix:
   +42:     feature.enable = true;
 ```
 
-**Command**: `git-stager stage flake.nix:137 config.nix:42`
+**Command**: `git-lines stage flake.nix:137 config.nix:42`
 
 **Expected Patch**:
 ```diff
@@ -48,7 +48,7 @@ src/config.js:
   +5:      NEW_VERSION = "2.0";
 ```
 
-**Command**: `git-stager stage src/main.js:10 src/utils.js:-25 src/config.js:-5,5`
+**Command**: `git-lines stage src/main.js:10 src/utils.js:-25 src/config.js:-5,5`
 
 **Expected Patch**:
 ```diff
@@ -89,7 +89,7 @@ tests/test_core.py:
   +21:         assert True
 ```
 
-**Command**: `git-stager stage lib/core.py:10,50 lib/helpers.py:-5,100 tests/test_core.py:20,21`
+**Command**: `git-lines stage lib/core.py:10,50 lib/helpers.py:-5,100 tests/test_core.py:20,21`
 
 **Expected Patch**:
 ```diff
@@ -132,7 +132,7 @@ src/utils/helpers/format.js:
   +10:     newFormat(data)
 ```
 
-**Command**: `git-stager stage src/components/Header.jsx:15 src/components/Footer.jsx:30 src/utils/helpers/format.js:-10,10`
+**Command**: `git-lines stage src/components/Header.jsx:15 src/components/Footer.jsx:30 src/utils/helpers/format.js:-10,10`
 
 **Expected Patch**:
 ```diff
@@ -167,7 +167,7 @@ file4.txt: +4:  change4
 file5.txt: +5:  change5
 ```
 
-**Command**: `git-stager stage file1.txt:1 file2.txt:2 file3.txt:3 file4.txt:4 file5.txt:5`
+**Command**: `git-lines stage file1.txt:1 file2.txt:2 file3.txt:3 file4.txt:4 file5.txt:5`
 
 **Expected Patch**:
 ```diff

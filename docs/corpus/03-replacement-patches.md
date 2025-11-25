@@ -12,7 +12,7 @@ This document specifies all valid ways to generate replacement patches (delete +
   +10:     new_value = "modern";
 ```
 
-**Command**: `git-stager stage file.nix:-10,10`
+**Command**: `git-lines stage file.nix:-10,10`
 
 **Expected Patch**:
 ```diff
@@ -38,7 +38,7 @@ This document specifies all valid ways to generate replacement patches (delete +
   +24:     }
 ```
 
-**Command**: `git-stager stage file.js:-20..-23,20..24`
+**Command**: `git-lines stage file.js:-20..-23,20..24`
 
 **Expected Patch**:
 ```diff
@@ -69,7 +69,7 @@ This document specifies all valid ways to generate replacement patches (delete +
   +13:     setting_d = true;
 ```
 
-**Command**: `git-stager stage file.nix:-10,10,-12,12`
+**Command**: `git-lines stage file.nix:-10,10,-12,12`
 
 **Expected Patch**:
 ```diff
@@ -91,7 +91,7 @@ This document specifies all valid ways to generate replacement patches (delete +
   +30:     cfg();
 ```
 
-**Command**: `git-stager stage file.nix:-30,30`
+**Command**: `git-lines stage file.nix:-30,30`
 
 **Expected Patch**:
 ```diff
@@ -116,7 +116,7 @@ This document specifies all valid ways to generate replacement patches (delete +
   +80:     // Updated comment
 ```
 
-**Command**: `git-stager stage file.js:-5,5,-25,25`
+**Command**: `git-lines stage file.js:-5,5,-25,25`
 
 **Expected Patch**:
 ```diff
@@ -140,7 +140,7 @@ This document specifies all valid ways to generate replacement patches (delete +
   +11:     added_setting = true;
 ```
 
-**Command**: `git-stager stage file.nix:-11,10`
+**Command**: `git-lines stage file.nix:-11,10`
 
 **Expected Patch**:
 ```diff

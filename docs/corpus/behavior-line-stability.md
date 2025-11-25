@@ -4,7 +4,7 @@ This document specifies the critical behavior that line numbers remain stable af
 
 ## Purpose
 
-Verify that `git-stager diff` line numbers remain valid after partial staging operations, enabling sequential staging workflows.
+Verify that `git-lines diff` line numbers remain valid after partial staging operations, enabling sequential staging workflows.
 
 ## Test Scenario
 
@@ -19,7 +19,7 @@ config.nix:
 ## Sequential Staging Test
 
 ### Step 1: Stage Later Hunk First
-**Command**: `git-stager stage config.nix:10`
+**Command**: `git-lines stage config.nix:10`
 
 **Result After Step 1**:
 ```bash
@@ -27,13 +27,13 @@ $ git diff --cached config.nix
 @@ -9,0 +10 @@
 +# SECOND INSERTION
 
-$ git-stager diff config.nix
+$ git-lines diff config.nix
 config.nix:
   +3:  # FIRST INSERTION
 ```
 
 ### Step 2: Stage Earlier Hunk
-**Command**: `git-stager stage config.nix:3`
+**Command**: `git-lines stage config.nix:3`
 
 **Result After Step 2**:
 ```bash
@@ -46,7 +46,7 @@ $ git diff --cached config.nix
 
 ## Critical Invariant
 
-**Line numbers in `git-stager diff` must remain stable**: After staging line 10, line 3 is still referenced as line 3, not adjusted for the prior staging.
+**Line numbers in `git-lines diff` must remain stable**: After staging line 10, line 3 is still referenced as line 3, not adjusted for the prior staging.
 
 ## Why This Matters
 
@@ -57,7 +57,7 @@ $ git diff --cached config.nix
 
 ## Implementation Requirement
 
-The diff parser must always work from the current working directory state, not from accumulated staging state. Each `git-stager diff` call should produce line numbers that are valid for the next `git-stager stage` command.
+The diff parser must always work from the current working directory state, not from accumulated staging state. Each `git-lines diff` call should produce line numbers that are valid for the next `git-lines stage` command.
 
 ## Related Tests
 

@@ -103,7 +103,7 @@
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
           # Build the actual package
-          git-stager = craneLib.buildPackage (
+          git-lines = craneLib.buildPackage (
             commonArgs
             // {
               inherit cargoArtifacts;
@@ -113,29 +113,29 @@
 
               postInstall = ''
                 # Generate and install man page
-                $out/bin/git-stager man > git-stager.1
-                installManPage git-stager.1
+                $out/bin/git-lines man > git-lines.1
+                installManPage git-lines.1
 
                 # Generate and install shell completions
-                installShellCompletion --cmd git-stager \
-                  --bash <($out/bin/git-stager completions bash) \
-                  --fish <($out/bin/git-stager completions fish) \
-                  --zsh <($out/bin/git-stager completions zsh)
+                installShellCompletion --cmd git-lines \
+                  --bash <($out/bin/git-lines completions bash) \
+                  --fish <($out/bin/git-lines completions fish) \
+                  --zsh <($out/bin/git-lines completions zsh)
               '';
             }
           );
         in
         {
           packages = {
-            default = git-stager;
-            git-stager = git-stager;
+            default = git-lines;
+            git-lines = git-lines;
           };
 
           checks = {
-            inherit git-stager;
+            inherit git-lines;
 
             # Run clippy
-            git-stager-clippy = craneLib.cargoClippy (
+            git-lines-clippy = craneLib.cargoClippy (
               commonArgs
               // {
                 inherit cargoArtifacts;
@@ -144,12 +144,12 @@
             );
 
             # Check formatting
-            git-stager-fmt = craneLib.cargoFmt {
+            git-lines-fmt = craneLib.cargoFmt {
               inherit src;
             };
 
             # Run tests
-            git-stager-test = craneLib.cargoTest (
+            git-lines-test = craneLib.cargoTest (
               commonArgs
               // {
                 inherit cargoArtifacts;
@@ -157,7 +157,7 @@
             );
 
             # Code coverage
-            git-stager-coverage = craneLib.cargoTarpaulin (
+            git-lines-coverage = craneLib.cargoTarpaulin (
               commonArgs
               // {
                 inherit cargoArtifacts;
@@ -165,7 +165,7 @@
             );
 
             # Security audit
-            git-stager-audit = craneLib.cargoAudit (
+            git-lines-audit = craneLib.cargoAudit (
               commonArgs
               // {
                 advisory-db = inputs.advisory-db;
@@ -173,10 +173,10 @@
             );
 
             # Dependency policy check (licenses, banned crates, sources)
-            git-stager-deny = craneLib.cargoDeny (commonArgs // { });
+            git-lines-deny = craneLib.cargoDeny (commonArgs // { });
 
             # Generate documentation
-            git-stager-doc = craneLib.cargoDoc (
+            git-lines-doc = craneLib.cargoDoc (
               commonArgs
               // {
                 inherit cargoArtifacts;

@@ -1,12 +1,12 @@
-# git-stager
+# git-lines
 
 Non-interactive line-level git staging tool for LLMs and automation.
 
 ## Overview
 
-`git-stager` enables programmatic, line-level staging of git changes. It fills the gap left by `git add -p`, which requires interactive input and cannot be used by LLMs or automation tools.
+`git-lines` enables programmatic, line-level staging of git changes. It fills the gap left by `git add -p`, which requires interactive input and cannot be used by LLMs or automation tools.
 
-When an LLM or automated system makes changes to code, those changes are often semantically distinct but physically interleaved in the same file. `git-stager` allows these systems to autonomously organize changes into clean, semantic commits without human intervention.
+When an LLM or automated system makes changes to code, those changes are often semantically distinct but physically interleaved in the same file. `git-lines` allows these systems to autonomously organize changes into clean, semantic commits without human intervention.
 
 ## The Problem
 
@@ -20,16 +20,16 @@ Result: LLMs can only stage entire files with `git add <file>`, losing the abili
 
 ## The Solution
 
-`git-stager` provides a non-interactive CLI for line-level staging:
+`git-lines` provides a non-interactive CLI for line-level staging:
 
 ```bash
 # 1. View changes with line numbers
-git-stager diff
+git-lines diff
 
 # 2. Stage specific lines by number
-git-stager stage flake.nix:137,142
-git-stager stage config.nix:10..15
-git-stager stage zsh.nix:-20,-21
+git-lines stage flake.nix:137,142
+git-lines stage config.nix:10..15
+git-lines stage zsh.nix:-20,-21
 
 # 3. Commit as usual
 git commit -m "Add new dependencies"
@@ -42,7 +42,7 @@ This workflow is fully scriptable and requires no human interaction.
 Consider these changes in one file:
 
 ```bash
-$ git-stager diff vscode/default.nix
+$ git-lines diff vscode/default.nix
 vscode/default.nix:
   +40:        # Allow Stylix to override terminal font
   +41:        "terminal.integrated.fontFamily" = lib.mkDefault "monospace";
@@ -53,15 +53,15 @@ Git sees this as one atomic hunk. But semantically it's two features:
 - Lines 40-41: Theme configuration (related to Stylix)
 - Line 42: Direnv settings (unrelated)
 
-With `git-stager`, an LLM can create two focused commits:
+With `git-lines`, an LLM can create two focused commits:
 
 ```bash
 # Commit 1: Theme changes
-git-stager stage vscode/default.nix:40..41
+git-lines stage vscode/default.nix:40..41
 git commit -m "feat: add Stylix font override for terminal"
 
 # Commit 2: Direnv changes
-git-stager stage vscode/default.nix:42
+git-lines stage vscode/default.nix:42
 git commit -m "feat: enable automatic direnv restart"
 ```
 
@@ -72,14 +72,14 @@ Each commit is self-contained and semantically coherent.
 ### From crates.io
 
 ```bash
-cargo install git-stager
+cargo install git-lines
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/Omegaice/git-stager
-cd git-stager
+git clone https://github.com/Omegaice/git-lines
+cd git-lines
 cargo install --path .
 ```
 
@@ -87,13 +87,13 @@ cargo install --path .
 
 ```bash
 # Bash
-git-stager completions bash > ~/.local/share/bash-completion/completions/git-stager
+git-lines completions bash > ~/.local/share/bash-completion/completions/git-lines
 
 # Zsh
-git-stager completions zsh > ~/.zfunc/_git-stager
+git-lines completions zsh > ~/.zfunc/_git-lines
 
 # Fish
-git-stager completions fish > ~/.config/fish/completions/git-stager.fish
+git-lines completions fish > ~/.config/fish/completions/git-lines.fish
 ```
 
 ## Usage
@@ -103,10 +103,10 @@ git-stager completions fish > ~/.config/fish/completions/git-stager.fish
 ```bash
 # 1. Make changes to files (manually or via LLM)
 # 2. View unstaged changes with line numbers
-git-stager diff
+git-lines diff
 
 # 3. Stage specific lines
-git-stager stage file.nix:10,15,20
+git-lines stage file.nix:10,15,20
 
 # 4. Create commit
 git commit -m "Your commit message"
@@ -116,25 +116,25 @@ git commit -m "Your commit message"
 
 ```bash
 # Single addition (new line 137)
-git-stager stage flake.nix:137
+git-lines stage flake.nix:137
 
 # Range of additions (lines 10-15 inclusive)
-git-stager stage config.nix:10..15
+git-lines stage config.nix:10..15
 
 # Single deletion (old line 20)
-git-stager stage zsh.nix:-20
+git-lines stage zsh.nix:-20
 
 # Range of deletions
-git-stager stage file.nix:-10..-15
+git-lines stage file.nix:-10..-15
 
 # Multiple selections (comma-separated)
-git-stager stage config.nix:10,15,20
+git-lines stage config.nix:10,15,20
 
 # Mixed operations
-git-stager stage gtk.nix:-10,-11,12
+git-lines stage gtk.nix:-10,-11,12
 
 # Multiple files in one command
-git-stager stage flake.nix:137 gtk.nix:12 zsh.nix:-15
+git-lines stage flake.nix:137 gtk.nix:12 zsh.nix:-15
 ```
 
 ### Advanced Examples
@@ -142,25 +142,25 @@ git-stager stage flake.nix:137 gtk.nix:12 zsh.nix:-15
 **Splitting changes within a single hunk:**
 
 ```bash
-$ git-stager diff config.nix
+$ git-lines diff config.nix
 config.nix:
   +10:    feature_a_enabled = true;
   +11:    feature_a_timeout = 30;
   +12:    feature_b_enabled = true;
 
 # Stage only feature A
-$ git-stager stage config.nix:10,11
+$ git-lines stage config.nix:10,11
 $ git commit -m "Enable feature A with 30s timeout"
 
 # Later, stage feature B
-$ git-stager stage config.nix:12
+$ git-lines stage config.nix:12
 $ git commit -m "Enable feature B"
 ```
 
 **Staging from multiple non-contiguous hunks:**
 
 ```bash
-$ git-stager diff flake.nix
+$ git-lines diff flake.nix
 flake.nix:
   +7:       determinate.url = "github:DeterminateSystems/determinate";
 
@@ -169,14 +169,14 @@ flake.nix:
   +142:         ./flake-modules/home-manager.nix
 
 # Stage lines from different hunks that are semantically related
-$ git-stager stage flake.nix:7,142
+$ git-lines stage flake.nix:7,142
 $ git commit -m "Add determinate and home-manager modules"
 ```
 
 **Selective staging from mixed additions and deletions:**
 
 ```bash
-$ git-stager diff gtk.nix
+$ git-lines diff gtk.nix
 gtk.nix:
   -10:    gtk.theme.name = "Adwaita";
   -11:    gtk.iconTheme.name = "Papirus";
@@ -185,13 +185,13 @@ gtk.nix:
   +12:    gtk.cursorTheme.size = 24;
 
 # Stage only the cursor size addition, ignore theme changes
-$ git-stager stage gtk.nix:12
+$ git-lines stage gtk.nix:12
 $ git commit -m "Set cursor size to 24"
 ```
 
 ## When to Use
 
-### Use `git-stager` when:
+### Use `git-lines` when:
 - Multiple unrelated changes exist in the same file
 - You need programmatic/scriptable staging (LLM workflows)
 - Changes need to be organized into semantic commits
@@ -202,7 +202,7 @@ $ git commit -m "Set cursor size to 24"
 - All changes in a file are semantically related
 - Changes are already separated by file boundaries
 
-**Philosophy**: `git-stager` is a companion to git, not a replacement. Use it only when line-level precision is needed.
+**Philosophy**: `git-lines` is a companion to git, not a replacement. Use it only when line-level precision is needed.
 
 ## How It Works
 
@@ -211,7 +211,7 @@ $ git commit -m "Set cursor size to 24"
 3. **Filter lines**: Extract only the requested lines from the diff
 4. **Apply patch**: Feed the filtered patch to `git apply --cached`
 
-Line numbers are always based on the output of `git-stager diff`, which shows the current state of unstaged changes.
+Line numbers are always based on the output of `git-lines diff`, which shows the current state of unstaged changes.
 
 ## Use Cases
 
@@ -251,11 +251,11 @@ MIT
 
 ## Contributing
 
-Issues and pull requests welcome at [github.com/Omegaice/git-stager](https://github.com/Omegaice/git-stager)
+Issues and pull requests welcome at [github.com/Omegaice/git-lines](https://github.com/Omegaice/git-lines)
 
 ## Documentation
 
-Full API documentation: [docs.rs/git-stager](https://docs.rs/git-stager)
+Full API documentation: [docs.rs/git-lines](https://docs.rs/git-lines)
 
 ---
 

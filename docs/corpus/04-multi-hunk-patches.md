@@ -15,7 +15,7 @@ This document specifies patches with multiple hunks within a single file.
   +120:    third_addition = true;
 ```
 
-**Command**: `git-stager stage file.nix:7,45,120`
+**Command**: `git-lines stage file.nix:7,45,120`
 
 **Expected Patch**:
 ```diff
@@ -41,7 +41,7 @@ This document specifies patches with multiple hunks within a single file.
   +49:     new_value = 2;
 ```
 
-**Command**: `git-stager stage file.nix:10,-30,-50,49`
+**Command**: `git-lines stage file.nix:10,-30,-50,49`
 
 **Expected Patch**:
 ```diff
@@ -67,7 +67,7 @@ This document specifies patches with multiple hunks within a single file.
   +24:     line_24 = true;
 ```
 
-**Command**: `git-stager stage file.nix:20,22,24`
+**Command**: `git-lines stage file.nix:20,22,24`
 
 **Expected Patch**:
 ```diff
@@ -95,7 +95,7 @@ This document specifies patches with multiple hunks within a single file.
   +50:     // Add 1 line (originally line 52)
 ```
 
-**Command**: `git-stager stage file.js:10,11,-30..-32,50`
+**Command**: `git-lines stage file.js:10,11,-30..-32,50`
 
 **Expected Patch**:
 ```diff
@@ -128,7 +128,7 @@ This document specifies patches with multiple hunks within a single file.
   +95:     change_10();
 ```
 
-**Command**: `git-stager stage file.js:5,15,25,35,45,55,65,75,85,95`
+**Command**: `git-lines stage file.js:5,15,25,35,45,55,65,75,85,95`
 
 **Expected Patch**:
 ```diff
@@ -165,7 +165,7 @@ This document specifies patches with multiple hunks within a single file.
   +50:     late_addition();
 ```
 
-**Command**: `git-stager stage file.nix:50,3`
+**Command**: `git-lines stage file.nix:50,3`
 
 **Expected Patch**:
 ```diff

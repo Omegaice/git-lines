@@ -42,7 +42,7 @@ impl Diff {
 
     /// Filter lines across all files, returning a new Diff with only matching lines.
     ///
-    /// This is the main filtering method used by git-stager to select specific lines
+    /// This is the main filtering method used by git-lines to select specific lines
     /// for staging.
     ///
     /// # Parameters
@@ -62,7 +62,7 @@ impl Diff {
     /// # Example
     ///
     /// ```
-    /// use git_stager::diff::Diff;
+    /// use git_lines::diff::Diff;
     ///
     /// let diff = Diff::parse("...git diff output...");
     ///

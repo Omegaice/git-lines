@@ -1,6 +1,6 @@
 # Git-Stager Corpus Documentation
 
-This directory contains the complete specification for git-stager's patch generation capabilities.
+This directory contains the complete specification for git-lines's patch generation capabilities.
 
 ## Structure
 
@@ -24,8 +24,8 @@ Each document serves as both:
 
 Each test case includes:
 - **Purpose** - What aspect is being tested
-- **Input Diff** - The diff format git-stager receives
-- **Command** - The exact git-stager command to run
+- **Input Diff** - The diff format git-lines receives
+- **Command** - The exact git-lines command to run
 - **Expected Patch** - The exact patch that must be generated
 
 Each document concludes with:
@@ -43,7 +43,7 @@ For implementers:
 For test writers:
 1. Each case should become an automated test
 2. Use snapshot testing to verify Expected Patch
-3. Test both the git-stager output and git apply success
+3. Test both the git-lines output and git apply success
 
 ## Related Files
 

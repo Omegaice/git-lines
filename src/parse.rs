@@ -19,7 +19,7 @@
 //! # Examples
 //!
 //! ```
-//! use git_stager::parse::{parse_file_refs, LineRef};
+//! use git_lines::parse::{parse_file_refs, LineRef};
 //! use std::num::NonZeroU32;
 //!
 //! // Single addition
@@ -109,7 +109,7 @@ pub struct FileLineRefs {
 /// # Examples
 ///
 /// ```
-/// use git_stager::parse::{parse_file_refs, LineRef};
+/// use git_lines::parse::{parse_file_refs, LineRef};
 /// use std::num::NonZeroU32;
 ///
 /// let refs = parse_file_refs("flake.nix:137").unwrap();

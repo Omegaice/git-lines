@@ -11,7 +11,7 @@ This document specifies all valid ways to generate deletion-only patches.
   -15:       enableAutosuggestions = true;
 ```
 
-**Command**: `git-stager stage file.nix:-15`
+**Command**: `git-lines stage file.nix:-15`
 
 **Expected Patch**:
 ```diff
@@ -30,7 +30,7 @@ This document specifies all valid ways to generate deletion-only patches.
   -17:       enableSyntaxHighlighting = true;
 ```
 
-**Command**: `git-stager stage file.nix:-15..-17`
+**Command**: `git-lines stage file.nix:-15..-17`
 
 **Expected Patch**:
 ```diff
@@ -53,7 +53,7 @@ This document specifies all valid ways to generate deletion-only patches.
   -14:     legacy_feature = true;
 ```
 
-**Command**: `git-stager stage file.nix:-11,-12,-14`
+**Command**: `git-lines stage file.nix:-11,-12,-14`
 
 **Expected Patch**:
 ```diff
@@ -77,7 +77,7 @@ This document specifies all valid ways to generate deletion-only patches.
   +27:     additional = true;
 ```
 
-**Command**: `git-stager stage file.nix:-26`
+**Command**: `git-lines stage file.nix:-26`
 
 **Expected Patch**:
 ```diff
@@ -95,7 +95,7 @@ This document specifies all valid ways to generate deletion-only patches.
   -2:      # Old header comment
 ```
 
-**Command**: `git-stager stage file.sh:-1..-2`
+**Command**: `git-lines stage file.sh:-1..-2`
 
 **Expected Patch**:
 ```diff
@@ -115,7 +115,7 @@ This document specifies all valid ways to generate deletion-only patches.
   -100:    # EOF comment
 ```
 
-**Command**: `git-stager stage file.nix:-98..-100`
+**Command**: `git-lines stage file.nix:-98..-100`
 
 **Expected Patch**:
 ```diff
@@ -134,7 +134,7 @@ This document specifies all valid ways to generate deletion-only patches.
   -1:      only content
 ```
 
-**Command**: `git-stager stage file.txt:-1`
+**Command**: `git-lines stage file.txt:-1`
 
 **Expected Patch**:
 ```diff

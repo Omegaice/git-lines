@@ -13,7 +13,7 @@ This document specifies patches involving files without trailing newlines.
   +4:  new line
 ```
 
-**Command**: `git-stager stage config.nix:4`
+**Command**: `git-lines stage config.nix:4`
 
 **Expected Patch**:
 ```diff
@@ -38,7 +38,7 @@ This document specifies patches involving files without trailing newlines.
   +4:  new line
 ```
 
-**Command**: `git-stager stage config.nix:-3,3,4`
+**Command**: `git-lines stage config.nix:-3,3,4`
 
 **Expected Patch**:
 ```diff
@@ -60,7 +60,7 @@ This document specifies patches involving files without trailing newlines.
   +3:  no newline
 ```
 
-**Command**: `git-stager stage config.nix:-3,3`
+**Command**: `git-lines stage config.nix:-3,3`
 
 **Expected Patch**:
 ```diff
@@ -79,7 +79,7 @@ This document specifies patches involving files without trailing newlines.
   -3:  no newline
 ```
 
-**Command**: `git-stager stage config.nix:-3`
+**Command**: `git-lines stage config.nix:-3`
 
 **Expected Patch**:
 ```diff
@@ -98,7 +98,7 @@ This document specifies patches involving files without trailing newlines.
   +3:  new content
 ```
 
-**Command**: `git-stager stage config.nix:-3,3`
+**Command**: `git-lines stage config.nix:-3,3`
 
 **Expected Patch**:
 ```diff
@@ -121,7 +121,7 @@ This document specifies patches involving files without trailing newlines.
   +5:  fifth line
 ```
 
-**Command**: `git-stager stage config.nix:5`
+**Command**: `git-lines stage config.nix:5`
 
 **Expected Patch**:
 ```diff
@@ -149,7 +149,7 @@ This document specifies patches involving files without trailing newlines.
   +13: added three
 ```
 
-**Command**: `git-stager stage file.txt:11,13`
+**Command**: `git-lines stage file.txt:11,13`
 
 **Expected Patch**:
 ```diff
@@ -177,7 +177,7 @@ This document specifies patches involving files without trailing newlines.
   +30: late addition
 ```
 
-**Command**: `git-stager stage file.txt:5,21,30`
+**Command**: `git-lines stage file.txt:5,21,30`
 
 **Expected Patch**:
 ```diff

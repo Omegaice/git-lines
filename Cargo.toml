@@ -1,13 +1,13 @@
 [package]
-name = "git-stager"
+name = "git-lines"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Omegaice"]
 description = "Non-interactive git hunk staging tool"
 license = "MIT"
-repository = "https://github.com/Omegaice/git-stager"
-homepage = "https://github.com/Omegaice/git-stager"
+repository = "https://github.com/Omegaice/git-lines"
+homepage = "https://github.com/Omegaice/git-lines"
 readme = "README.md"
 keywords = ["git", "staging", "cli", "version-control", "diff"]
 categories = ["command-line-utilities", "development-tools"]
@@ -36,7 +36,7 @@ similar-asserts = "1.7.0"
 tempfile = "3.23.0"
 
 [[bin]]
-name = "git-stager"
+name = "git-lines"
 path = "src/main.rs"
 
 [profile.release]

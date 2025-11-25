@@ -2,13 +2,13 @@
 
 ## Tool Purpose
 
-git-stager enables line-level staging when git's hunks are too coarse. It fills the gap left by `git add -p` which Claude cannot use interactively.
+git-lines enables line-level staging when git's hunks are too coarse. It fills the gap left by `git add -p` which Claude cannot use interactively.
 
-**Critical context**: This is a git companion tool, not a replacement. Claude uses git directly for everything else (staging whole files, committing, etc.). Only reach for git-stager when multiple unrelated changes exist in the same file and need separate commits.
+**Critical context**: This is a git companion tool, not a replacement. Claude uses git directly for everything else (staging whole files, committing, etc.). Only reach for git-lines when multiple unrelated changes exist in the same file and need separate commits.
 
 Typical workflow:
-1. `git-stager diff` to see available line numbers
-2. `git-stager stage file:N` to stage specific lines
+1. `git lines diff` to see available line numbers
+2. `git lines stage file:N` to stage specific lines
 3. `git commit` as normal
 
 ## Architecture
@@ -17,13 +17,13 @@ Typical workflow:
 - **parse.rs** - Input syntax parsing (`file:refs` format). Owns `ParseError`.
 - **diff.rs** - Git diff parsing and formatting. Owns `DiffError`.
 - **patch.rs** - Patch construction from selected lines. Owns `PatchError`.
-- **lib.rs** - `GitStager` orchestration and git command execution. Owns `GitCommandError`, composes `GitStagerError`.
+- **lib.rs** - `GitLines` orchestration and git command execution. Owns `GitCommandError`, composes `GitLinesError`.
 - **main.rs** - Thin CLI wrapper. Argument parsing and output display only.
 
 ### Error Handling Pattern
-Each module defines its own error type using `error_set!`. The top-level `GitStagerError` composes them via tuple variants:
+Each module defines its own error type using `error_set!`. The top-level `GitLinesError` composes them via tuple variants:
 ```rust
-GitStagerError := {
+GitLinesError := {
     NoChanges { file: String },
     ParseError(ParseError),
     DiffError(DiffError),

@@ -2,7 +2,7 @@
 #![allow(clippy::expect_used)]
 #![allow(missing_docs)]
 
-use git_stager::GitStager;
+use git_lines::GitLines;
 use git2::{Repository, Signature};
 use std::{fs, path::Path, process::Command};
 use tempfile::TempDir;
@@ -11,7 +11,7 @@ use tempfile::TempDir;
 struct Fixture {
     dir: TempDir,
     repo: Repository,
-    stager: GitStager,
+    stager: GitLines,
 }
 
 impl Fixture {
@@ -25,7 +25,7 @@ impl Fixture {
         config.set_str("user.name", "Test User").unwrap();
         config.set_str("user.email", "test@example.com").unwrap();
 
-        let stager = GitStager::new(dir.path());
+        let stager = GitLines::new(dir.path());
 
         Self { dir, repo, stager }
     }

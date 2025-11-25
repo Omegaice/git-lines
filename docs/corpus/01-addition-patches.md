@@ -11,7 +11,7 @@ This document specifies all valid ways to generate addition-only patches.
   +137:       debug = true;
 ```
 
-**Command**: `git-stager stage file.nix:137`
+**Command**: `git-lines stage file.nix:137`
 
 **Expected Patch**:
 ```diff
@@ -32,7 +32,7 @@ This document specifies all valid ways to generate addition-only patches.
   +43:     };
 ```
 
-**Command**: `git-stager stage file.nix:39..43`
+**Command**: `git-lines stage file.nix:39..43`
 
 **Expected Patch**:
 ```diff
@@ -57,7 +57,7 @@ This document specifies all valid ways to generate addition-only patches.
   +14:     feature.enable = true;
 ```
 
-**Command**: `git-stager stage file.nix:11,12,14`
+**Command**: `git-lines stage file.nix:11,12,14`
 
 **Expected Patch**:
 ```diff
@@ -80,7 +80,7 @@ This document specifies all valid ways to generate addition-only patches.
   +27:     additional = true;
 ```
 
-**Command**: `git-stager stage file.nix:27`
+**Command**: `git-lines stage file.nix:27`
 
 **Expected Patch**:
 ```diff
@@ -101,7 +101,7 @@ This document specifies all valid ways to generate addition-only patches.
   +120:    third_addition = true;
 ```
 
-**Command**: `git-stager stage file.nix:7,45`
+**Command**: `git-lines stage file.nix:7,45`
 
 **Expected Patch**:
 ```diff
@@ -125,7 +125,7 @@ This document specifies all valid ways to generate addition-only patches.
   +35:     line_35 = true;
 ```
 
-**Command**: `git-stager stage file.nix:30,32..34`
+**Command**: `git-lines stage file.nix:30,32..34`
 
 **Expected Patch**:
 ```diff

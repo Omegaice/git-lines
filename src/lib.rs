@@ -1,6 +1,6 @@
 //! Line-level git staging tool for fine-grained commit control.
 //!
-//! `git-stager` enables staging individual changed lines when git's hunks are too coarse.
+//! `git-lines` enables staging individual changed lines when git's hunks are too coarse.
 //! This fills the gap left by `git add -p` which requires interactive input and cannot be
 //! used by automation or LLMs.
 //!
@@ -12,16 +12,16 @@
 //!
 //! # Workflow
 //!
-//! 1. Use [`GitStager::diff`] to see line numbers for all unstaged changes
-//! 2. Use [`GitStager::stage`] to select specific lines by number
+//! 1. Use [`GitLines::diff`] to see line numbers for all unstaged changes
+//! 2. Use [`GitLines::stage`] to select specific lines by number
 //! 3. Create commits with `git commit` as usual
 //!
 //! # Examples
 //!
 //! ```no_run
-//! use git_stager::GitStager;
+//! use git_lines::GitLines;
 //!
-//! let stager = GitStager::new(".");
+//! let stager = GitLines::new(".");
 //!
 //! // View changes with line numbers
 //! let diff = stager.diff(&[]).unwrap();
@@ -48,7 +48,7 @@
 //!
 //! - [`parse`] - Parse `file:refs` syntax into structured line references
 //! - [`diff`] - Parse and manipulate git diff output
-//! - [`GitStager`] - Main API for staging operations
+//! - [`GitLines`] - Main API for staging operations
 //!
 //! # Use Cases
 //!
@@ -67,8 +67,8 @@ pub mod parse;
 pub use parse::ParseError;
 
 error_set! {
-    /// Top-level error for git-stager operations
-    GitStagerError := {
+    /// Top-level error for git-lines operations
+    GitLinesError := {
         /// No unstaged changes found in the specified file
         #[display("No changes found in {file}")]
         NoChanges { file: String },
@@ -108,13 +108,13 @@ error_set! {
     }
 }
 
-/// Main interface for git-stager operations
-pub struct GitStager {
+/// Main interface for git-lines operations
+pub struct GitLines {
     repo_path: PathBuf,
 }
 
-impl GitStager {
-    /// Create a new GitStager for the given repository path
+impl GitLines {
+    /// Create a new GitLines for the given repository path
     pub fn new(repo_path: impl AsRef<Path>) -> Self {
         Self {
             repo_path: repo_path.as_ref().to_path_buf(),
@@ -125,13 +125,13 @@ impl GitStager {
     ///
     /// # Examples
     /// ```no_run
-    /// # use git_stager::GitStager;
-    /// let stager = GitStager::new(".");
+    /// # use git_lines::GitLines;
+    /// let stager = GitLines::new(".");
     /// stager.stage("flake.nix:137").unwrap();
     /// stager.stage("file.nix:10..15").unwrap();
     /// stager.stage("config.nix:-10,-11,12").unwrap();
     /// ```
-    pub fn stage(&self, file_ref: &str) -> Result<(), GitStagerError> {
+    pub fn stage(&self, file_ref: &str) -> Result<(), GitLinesError> {
         self.stage_lines(&parse::parse_file_refs(file_ref)?)
     }
 
@@ -141,12 +141,12 @@ impl GitStager {
     ///
     /// # Examples
     /// ```no_run
-    /// # use git_stager::GitStager;
-    /// let stager = GitStager::new(".");
+    /// # use git_lines::GitLines;
+    /// let stager = GitLines::new(".");
     /// let diff = stager.diff(&[]).unwrap(); // all files
     /// let diff = stager.diff(&["flake.nix".to_string()]).unwrap(); // specific file
     /// ```
-    pub fn diff(&self, files: &[String]) -> Result<String, GitStagerError> {
+    pub fn diff(&self, files: &[String]) -> Result<String, GitLinesError> {
         let raw_diff = self.get_raw_diff(files)?;
         let parsed = diff::Diff::parse(&raw_diff);
         Ok(diff::format_diff(&parsed))
@@ -190,11 +190,11 @@ impl GitStager {
     }
 
     /// Stage specific lines from a file
-    fn stage_lines(&self, file_refs: &parse::FileLineRefs) -> Result<(), GitStagerError> {
+    fn stage_lines(&self, file_refs: &parse::FileLineRefs) -> Result<(), GitLinesError> {
         let diff_output = self.get_raw_diff(std::slice::from_ref(&file_refs.file))?;
 
         if diff_output.trim().is_empty() {
-            return Err(GitStagerError::NoChanges {
+            return Err(GitLinesError::NoChanges {
                 file: file_refs.file.clone(),
             });
         }
@@ -222,7 +222,7 @@ impl GitStager {
         );
 
         if filtered.files.is_empty() {
-            return Err(GitStagerError::NoMatchingLines {
+            return Err(GitLinesError::NoMatchingLines {
                 file: file_refs.file.clone(),
             });
         }
