@@ -15,9 +15,12 @@ Typical workflow:
 
 ### Module Responsibilities
 - **parse.rs** - Input syntax parsing (`file:refs` format). Owns `ParseError`.
-- **diff.rs** - Git diff parsing and formatting. Owns `DiffError`.
-- **patch.rs** - Patch construction from selected lines. Owns `PatchError`.
-- **lib.rs** - `GitLines` orchestration and git command execution. Owns `GitCommandError`, composes `GitLinesError`.
+- **diff/** - Git diff parsing and formatting. Contains:
+  - `mod.rs` - `format_diff()` for display output
+  - `full.rs` - `Diff` struct (multi-file)
+  - `file.rs` - `FileDiff` struct (single file)
+  - `hunk.rs` - `Hunk` struct, nom-based parser, line filtering/splitting
+- **lib.rs** - `GitLines` orchestration and git command execution. Owns `GitLinesError` and `GitCommandError`.
 - **main.rs** - Thin CLI wrapper. Argument parsing and output display only.
 
 ### Error Handling Pattern
@@ -25,15 +28,14 @@ Each module defines its own error type using `error_set!`. The top-level `GitLin
 ```rust
 GitLinesError := {
     NoChanges { file: String },
+    NoMatchingLines { file: String },
     ParseError(ParseError),
-    DiffError(DiffError),
-    PatchError(PatchError),
 } || GitCommandError
 ```
 This keeps modules self-contained while allowing automatic error conversion with `?`.
 
 ### Dependency Philosophy
-- **Minimal runtime dependencies** - Only clap and error_set
+- **Minimal runtime dependencies** - clap, error_set, nom
 - **git2 in dev-dependencies only** - Used for e2e test fixtures, not production code
 - **Use CLI git commands** - `git diff` and `git apply --cached` instead of libgit2. The `git apply` operation has no good libgit2 equivalent and CLI is battle-tested.
 
