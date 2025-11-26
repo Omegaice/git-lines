@@ -138,14 +138,13 @@ pub struct FileLineRefs {
 /// - No line references provided
 /// - Line numbers are invalid
 pub fn parse_file_refs(input: &str) -> Result<FileLineRefs, ParseError> {
-    let parts: Vec<&str> = input.splitn(2, ':').collect();
-    if parts.len() != 2 {
-        return Err(ParseError::InvalidFormat {
+    let (file, refs_str) = input
+        .split_once(':')
+        .ok_or_else(|| ParseError::InvalidFormat {
             input: input.to_string(),
-        });
-    }
+        })?;
 
-    let file = parts[0].trim();
+    let file = file.trim();
     if file.is_empty() {
         return Err(ParseError::EmptyFileName {
             input: input.to_string(),
@@ -154,7 +153,7 @@ pub fn parse_file_refs(input: &str) -> Result<FileLineRefs, ParseError> {
 
     Ok(FileLineRefs {
         file: file.to_string(),
-        refs: parse_line_refs(parts[1])?,
+        refs: parse_line_refs(refs_str)?,
     })
 }
 
