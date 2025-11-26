@@ -15,7 +15,7 @@
 //! # Workflow
 //!
 //! 1. Parse raw `git diff` output into [`Diff`]
-//! 2. Filter with `.retain()` to keep only selected lines
+//! 2. Filter with `.filter()` to keep only selected lines
 //! 3. Render back to patch format with `.to_string()`
 //! 4. Apply with `git apply --cached`
 //!
@@ -33,7 +33,7 @@
 //! "#;
 //!
 //! let diff = Diff::parse(raw_diff);
-//! let filtered = diff.retain(|_, _| false, |_, line| line == 11);
+//! let filtered = diff.filter(|_, _| false, |_, line| line == 11);
 //! // filtered now contains only line 11
 //! ```
 

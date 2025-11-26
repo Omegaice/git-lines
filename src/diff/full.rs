@@ -67,25 +67,23 @@ impl Diff {
     /// let diff = Diff::parse("...git diff output...");
     ///
     /// // Keep only line 137 from flake.nix
-    /// let filtered = diff.retain(
+    /// let filtered = diff.filter(
     ///     |_, _| false,
     ///     |path, line| path == "flake.nix" && line == 137
     /// );
     /// ```
     #[must_use]
-    pub fn retain<F, G>(&self, mut keep_old: F, mut keep_new: G) -> Self
+    pub fn filter<F, G>(self, mut keep_old: F, mut keep_new: G) -> Self
     where
         F: FnMut(&str, u32) -> bool,
         G: FnMut(&str, u32) -> bool,
     {
         let filtered_files: Vec<FileDiff> = self
             .files
-            .iter()
+            .into_iter()
             .filter_map(|file_diff| {
-                file_diff.retain(
-                    |old| keep_old(&file_diff.path, old),
-                    |new| keep_new(&file_diff.path, new),
-                )
+                let path = file_diff.path.clone();
+                file_diff.filter(|old| keep_old(&path, old), |new| keep_new(&path, new))
             })
             .collect();
 
@@ -153,7 +151,7 @@ index 111..222 100644
     }
 
     #[test]
-    fn retain_single_file() {
+    fn filter_single_file() {
         let text = r#"diff --git a/config.nix b/config.nix
 index fa2da6e..41114ff 100644
 --- a/config.nix
@@ -166,7 +164,7 @@ index fa2da6e..41114ff 100644
         let diff = Diff::parse(text);
 
         // Keep only line 10 from config.nix
-        let filtered = diff.retain(
+        let filtered = diff.filter(
             |_, _| false,
             |path, line| path == "config.nix" && line == 10,
         );
@@ -179,7 +177,7 @@ index fa2da6e..41114ff 100644
     }
 
     #[test]
-    fn retain_from_multiple_files() {
+    fn filter_from_multiple_files() {
         let text = r#"diff --git a/flake.nix b/flake.nix
 index abc1234..def5678 100644
 --- a/flake.nix
@@ -196,7 +194,7 @@ index 111..222 100644
         let diff = Diff::parse(text);
 
         // Keep line 137 from flake.nix and line 12 from gtk.nix
-        let filtered = diff.retain(
+        let filtered = diff.filter(
             |_, _| false,
             |path, line| (path == "flake.nix" && line == 137) || (path == "gtk.nix" && line == 12),
         );
@@ -207,7 +205,7 @@ index 111..222 100644
     }
 
     #[test]
-    fn retain_filters_out_empty_files() {
+    fn filter_removes_empty_files() {
         let text = r#"diff --git a/flake.nix b/flake.nix
 index abc1234..def5678 100644
 --- a/flake.nix
@@ -224,7 +222,7 @@ index 111..222 100644
         let diff = Diff::parse(text);
 
         // Keep only line 137 from flake.nix (gtk.nix should be filtered out)
-        let filtered = diff.retain(
+        let filtered = diff.filter(
             |_, _| false,
             |path, line| path == "flake.nix" && line == 137,
         );
@@ -334,7 +332,7 @@ mod proptests {
             diff in arb_multi_file_diff(),
             keep_new in arb_line_set()
         ) {
-            let filtered = diff.retain(
+            let filtered = diff.filter(
                 |_, _| false,
                 |_, l| keep_new.contains(&l)
             );

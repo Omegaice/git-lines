@@ -200,7 +200,7 @@ impl GitLines {
         }
 
         let full_diff = diff::Diff::parse(&diff_output);
-        let filtered = full_diff.retain(
+        let filtered = full_diff.filter(
             |_path, old_line| {
                 file_refs.refs.iter().any(|r| match r {
                     parse::LineRef::Delete(n) => n.get() == old_line,

@@ -72,7 +72,7 @@ impl FileDiff {
     /// - `Some(FileDiff)` containing only hunks with matching lines
     /// - `None` if no lines matched in any hunk
     #[must_use]
-    pub fn retain<F, G>(&self, mut keep_old: F, mut keep_new: G) -> Option<Self>
+    pub fn filter<F, G>(self, mut keep_old: F, mut keep_new: G) -> Option<Self>
     where
         F: FnMut(u32) -> bool,
         G: FnMut(u32) -> bool,
@@ -80,7 +80,7 @@ impl FileDiff {
         let mut output_hunks = Vec::new();
         let mut cumulative_delta: i32 = 0; // additions - deletions from previous hunks
 
-        for hunk in &self.hunks {
+        for hunk in self.hunks {
             let Some(filtered) = hunk.filter(&mut keep_old, &mut keep_new) else {
                 continue;
             };
@@ -101,7 +101,7 @@ impl FileDiff {
             None
         } else {
             Some(FileDiff {
-                path: self.path.clone(),
+                path: self.path,
                 hunks: output_hunks,
             })
         }
@@ -401,7 +401,7 @@ index fa2da6e..41114ff 100644
     }
 
     #[test]
-    fn retain_second_hunk_only() {
+    fn filter_second_hunk_only() {
         let file_diff = FileDiff {
             path: "config.nix".to_string(),
             hunks: vec![
@@ -432,7 +432,7 @@ index fa2da6e..41114ff 100644
             ],
         };
 
-        let filtered = file_diff.retain(|_| false, |n| n == 10).unwrap();
+        let filtered = file_diff.filter(|_| false, |n| n == 10).unwrap();
 
         assert_eq!(filtered.path, "config.nix");
         assert_eq!(filtered.hunks.len(), 1);
@@ -449,7 +449,7 @@ index fa2da6e..41114ff 100644
     }
 
     #[test]
-    fn retain_from_multiple_hunks_adjusts_line_numbers() {
+    fn filter_from_multiple_hunks_adjusts_line_numbers() {
         // When filtering lines from multiple hunks, later hunks' new_start positions
         // must account for the net line changes from earlier filtered hunks.
         //
@@ -491,7 +491,7 @@ index fa2da6e..41114ff 100644
             ],
         };
 
-        let filtered = file_diff.retain(|_| false, |n| n == 4 || n == 10).unwrap();
+        let filtered = file_diff.filter(|_| false, |n| n == 4 || n == 10).unwrap();
 
         // Expected result: Both hunks filtered, with hunk 2's new_start adjusted
         // to account for the reduced line count from hunk 1
@@ -529,7 +529,7 @@ index fa2da6e..41114ff 100644
     }
 
     #[test]
-    fn retain_nothing_returns_none() {
+    fn filter_nothing_returns_none() {
         let file_diff = FileDiff {
             path: "test.nix".to_string(),
             hunks: vec![Hunk {
@@ -546,7 +546,7 @@ index fa2da6e..41114ff 100644
             }],
         };
 
-        let filtered = file_diff.retain(|_| false, |_| false);
+        let filtered = file_diff.filter(|_| false, |_| false);
         assert!(filtered.is_none());
     }
 
@@ -701,7 +701,8 @@ mod proptests {
             file_diff in arb_multi_hunk_file(),
             keep_new in arb_line_set()
         ) {
-            if let Some(filtered) = file_diff.retain(
+            let original_debug = format!("{:?}", file_diff);
+            if let Some(filtered) = file_diff.filter(
                 |_| false,
                 |l| keep_new.contains(&l)
             ) {
@@ -710,8 +711,8 @@ mod proptests {
 
                 prop_assert!(
                     parsed.is_some(),
-                    "Failed to parse filtered FileDiff:\n{}\nOriginal: {:?}",
-                    rendered, file_diff
+                    "Failed to parse filtered FileDiff:\n{}\nOriginal: {}",
+                    rendered, original_debug
                 );
             }
         }
@@ -723,7 +724,7 @@ mod proptests {
             file_diff in arb_multi_hunk_file(),
             keep_new in arb_line_set()
         ) {
-            if let Some(filtered) = file_diff.retain(
+            if let Some(filtered) = file_diff.filter(
                 |_| false,
                 |l| keep_new.contains(&l)
             ) {
@@ -771,7 +772,7 @@ mod proptests {
             keep_old in arb_line_set(),
             keep_new in arb_line_set()
         ) {
-            if let Some(filtered) = file_diff.retain(
+            if let Some(filtered) = file_diff.filter(
                 |l| keep_old.contains(&l),
                 |l| keep_new.contains(&l)
             ) {
