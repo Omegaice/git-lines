@@ -1060,7 +1060,7 @@ mod multi_file {
 
         insta::assert_snapshot!(
             "multi_file__two_files_simple__diff",
-            f.stager.diff(&[]).unwrap()
+            f.stager.diff(&[] as &[&str]).unwrap()
         );
         f.stager.stage("flake.nix:137").unwrap();
         f.stager.stage("config.nix:42").unwrap();
@@ -1105,7 +1105,7 @@ mod multi_file {
 
         insta::assert_snapshot!(
             "multi_file__mixed_across_files__diff",
-            f.stager.diff(&[]).unwrap()
+            f.stager.diff(&[] as &[&str]).unwrap()
         );
         f.stager.stage("src/main.js:10").unwrap();
         f.stager.stage("src/utils.js:-25").unwrap();
@@ -1156,7 +1156,7 @@ mod multi_file {
 
         insta::assert_snapshot!(
             "multi_file__multi_hunk_multi_file__diff",
-            f.stager.diff(&[]).unwrap()
+            f.stager.diff(&[] as &[&str]).unwrap()
         );
         f.stager.stage("lib/core.py:10,51").unwrap();
         f.stager.stage("lib/helpers.py:-5,100").unwrap();
@@ -1204,7 +1204,7 @@ mod multi_file {
 
         insta::assert_snapshot!(
             "multi_file__deep_directories__diff",
-            f.stager.diff(&[]).unwrap()
+            f.stager.diff(&[] as &[&str]).unwrap()
         );
         f.stager.stage("src/components/Header.jsx:15").unwrap();
         f.stager.stage("src/components/Footer.jsx:30").unwrap();
@@ -1233,7 +1233,10 @@ mod multi_file {
             f.write_file(&format!("file{}.txt", i), &modified);
         }
 
-        insta::assert_snapshot!("multi_file__many_files__diff", f.stager.diff(&[]).unwrap());
+        insta::assert_snapshot!(
+            "multi_file__many_files__diff",
+            f.stager.diff(&[] as &[&str]).unwrap()
+        );
         f.stager.stage("file1.txt:2").unwrap();
         f.stager.stage("file2.txt:3").unwrap();
         f.stager.stage("file3.txt:4").unwrap();

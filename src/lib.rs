@@ -24,7 +24,7 @@
 //! let stager = GitLines::new(".");
 //!
 //! // View changes with line numbers
-//! let diff = stager.diff(&[]).unwrap();
+//! let diff = stager.diff(&[] as &[&str]).unwrap();
 //! println!("{}", diff);
 //!
 //! // Stage specific lines
@@ -143,11 +143,16 @@ impl GitLines {
     /// ```no_run
     /// # use git_lines::GitLines;
     /// let stager = GitLines::new(".");
-    /// let diff = stager.diff(&[]).unwrap(); // all files
-    /// let diff = stager.diff(&["flake.nix".to_string()]).unwrap(); // specific file
+    /// let diff = stager.diff(&[] as &[&str]).unwrap(); // all files
+    /// let diff = stager.diff(&["flake.nix"]).unwrap(); // specific file
     /// ```
-    pub fn diff(&self, files: &[String]) -> Result<String, GitLinesError> {
-        let raw_diff = self.get_raw_diff(files)?;
+    pub fn diff<I, S>(&self, files: I) -> Result<String, GitLinesError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let files: Vec<String> = files.into_iter().map(|s| s.as_ref().to_string()).collect();
+        let raw_diff = self.get_raw_diff(&files)?;
         let parsed = diff::Diff::parse(&raw_diff);
         Ok(diff::format_diff(&parsed))
     }
