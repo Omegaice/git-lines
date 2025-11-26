@@ -91,13 +91,59 @@ impl Diff {
             files: filtered_files,
         }
     }
+
+    /// Render the diff as a patch suitable for `git apply`.
+    ///
+    /// This produces the standard unified diff format that git tooling expects.
+    #[must_use]
+    pub fn to_patch(&self) -> String {
+        use std::fmt::Write;
+        let mut result = String::new();
+        for file_diff in &self.files {
+            write!(result, "{}", file_diff).expect("writing to String never fails");
+        }
+        result
+    }
 }
 
 impl std::fmt::Display for Diff {
+    /// Formats the diff for human display with explicit line numbers.
+    ///
+    /// # Format
+    ///
+    /// ```text
+    /// file.nix:
+    ///   -10:    deleted line
+    ///   +10:    added line
+    ///   +11:    another addition
+    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first_file = true;
         for file_diff in &self.files {
-            write!(f, "{}", file_diff)?;
+            if !first_file {
+                // Already have trailing newline from previous file
+            }
+            first_file = false;
+
+            writeln!(f, "{}:", file_diff.path)?;
+
+            for hunk in &file_diff.hunks {
+                // Show deletions
+                for (i, line) in hunk.old.lines.iter().enumerate() {
+                    let line_num = hunk.old.start + i as u32;
+                    writeln!(f, "  -{}:\t{}", line_num, line)?;
+                }
+
+                // Show additions
+                for (i, line) in hunk.new.lines.iter().enumerate() {
+                    let line_num = hunk.new.start + i as u32;
+                    writeln!(f, "  +{}:\t{}", line_num, line)?;
+                }
+
+                writeln!(f)?;
+            }
         }
+
         Ok(())
     }
 }
@@ -232,7 +278,7 @@ index 111..222 100644
     }
 
     #[test]
-    fn render_multiple_files() {
+    fn to_patch_multiple_files() {
         let text = r#"diff --git a/flake.nix b/flake.nix
 index abc1234..def5678 100644
 --- a/flake.nix
@@ -247,7 +293,7 @@ index 111..222 100644
 +    gtk.cursorTheme.size = 24;
 "#;
         let diff = Diff::parse(text);
-        let rendered = diff.to_string();
+        let rendered = diff.to_patch();
 
         assert!(rendered.contains("--- a/flake.nix"));
         assert!(rendered.contains("+++ b/flake.nix"));
@@ -309,10 +355,10 @@ mod proptests {
     }
 
     proptest! {
-        /// Diff with multiple files must round-trip
+        /// Diff with multiple files must round-trip through patch format
         #[test]
         fn diff_roundtrips(diff in arb_multi_file_diff()) {
-            let rendered = diff.to_string();
+            let rendered = diff.to_patch();
             let parsed = Diff::parse(&rendered);
 
             prop_assert_eq!(

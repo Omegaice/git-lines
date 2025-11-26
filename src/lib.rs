@@ -157,7 +157,7 @@ impl GitLines {
         let files: Vec<String> = files.into_iter().map(|s| s.as_ref().to_string()).collect();
         let raw_diff = self.get_raw_diff(&files)?;
         let parsed = diff::Diff::parse(&raw_diff);
-        Ok(diff::format_diff(&parsed))
+        Ok(parsed.to_string())
     }
 
     /// Get raw git diff output with zero context lines
@@ -235,7 +235,7 @@ impl GitLines {
             });
         }
 
-        Ok(self.apply_patch(&filtered.to_string())?)
+        Ok(self.apply_patch(&filtered.to_patch())?)
     }
 
     /// Apply a patch to the git index
