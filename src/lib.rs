@@ -126,15 +126,16 @@ impl GitLines {
 
     /// Stage specific lines from a file
     ///
+    /// Returns the staged diff for display/confirmation purposes.
+    ///
     /// # Examples
     /// ```no_run
     /// # use git_lines::GitLines;
     /// let stager = GitLines::new(".");
-    /// stager.stage("flake.nix:137").unwrap();
-    /// stager.stage("file.nix:10..15").unwrap();
-    /// stager.stage("config.nix:-10,-11,12").unwrap();
+    /// let staged = stager.stage("flake.nix:137").unwrap();
+    /// println!("{}", staged); // Show what was staged
     /// ```
-    pub fn stage(&self, file_ref: &str) -> Result<(), GitLinesError> {
+    pub fn stage(&self, file_ref: &str) -> Result<diff::Diff, GitLinesError> {
         self.stage_lines(&parse::FileLineRefs::parse(file_ref)?)
     }
 
@@ -197,8 +198,8 @@ impl GitLines {
         })
     }
 
-    /// Stage specific lines from a file
-    fn stage_lines(&self, file_refs: &parse::FileLineRefs) -> Result<(), GitLinesError> {
+    /// Stage specific lines from a file, returning the staged diff
+    fn stage_lines(&self, file_refs: &parse::FileLineRefs) -> Result<diff::Diff, GitLinesError> {
         let diff_output = self.get_raw_diff(std::slice::from_ref(&file_refs.file))?;
 
         if diff_output.trim().is_empty() {
@@ -235,7 +236,8 @@ impl GitLines {
             });
         }
 
-        Ok(self.apply_patch(&filtered.to_patch())?)
+        self.apply_patch(&filtered.to_patch())?;
+        Ok(filtered)
     }
 
     /// Apply a patch to the git index

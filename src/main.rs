@@ -53,6 +53,10 @@ enum Commands {
     Stage {
         /// One or more FILE:REFS specifications
         file_refs: Vec<String>,
+
+        /// Suppress output showing what was staged
+        #[arg(short, long)]
+        quiet: bool,
     },
     /// Show unstaged changes with line numbers for staging
     ///
@@ -121,13 +125,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let man = Man::new(cmd);
             man.render(&mut io::stdout())?;
         }
-        Commands::Stage { file_refs } => {
+        Commands::Stage { file_refs, quiet } => {
             let repo_path = cli.path.as_deref().unwrap_or(".");
             let stager = GitLines::new(repo_path);
             for file_ref in &file_refs {
-                stager
+                let staged = stager
                     .stage(file_ref)
                     .map_err(|e| format!("Failed to stage '{}': {}", file_ref, e))?;
+                if !quiet {
+                    print!("Staged:\n{}", staged);
+                }
             }
         }
         Commands::Diff { files } => {
