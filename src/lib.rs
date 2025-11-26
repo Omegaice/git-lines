@@ -81,6 +81,9 @@ error_set! {
 
     /// Errors from git command execution
     GitCommandError := {
+        /// Repository path contains invalid UTF-8
+        #[display("Repository path is not valid UTF-8")]
+        InvalidRepoPath,
         /// Failed to execute the git diff command
         #[display("Failed to run git diff: {message}")]
         DiffFailed { message: String },
@@ -162,7 +165,7 @@ impl GitLines {
         let repo_path_str = self
             .repo_path
             .to_str()
-            .expect("repo path should be valid UTF-8");
+            .ok_or(GitCommandError::InvalidRepoPath)?;
         let mut args = vec![
             "-C",
             repo_path_str,
@@ -242,7 +245,7 @@ impl GitLines {
         let repo_path_str = self
             .repo_path
             .to_str()
-            .expect("repo path should be valid UTF-8");
+            .ok_or(GitCommandError::InvalidRepoPath)?;
         let mut child = Command::new("git")
             .args([
                 "-C",
