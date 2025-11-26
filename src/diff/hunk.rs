@@ -21,6 +21,38 @@ pub struct ModifiedLines {
     pub missing_final_newline: bool,
 }
 
+impl ModifiedLines {
+    /// Filter lines based on a predicate, returning which lines were kept
+    /// along with boundary tracking information.
+    fn filter<F>(&self, mut keep: F) -> FilterResult
+    where
+        F: FnMut(u32) -> bool,
+    {
+        let mut result = FilterResult {
+            lines: Vec::new(),
+            kept_first_boundary: false,
+            kept_last_boundary: false,
+        };
+
+        let last_idx = self.lines.len().saturating_sub(1);
+
+        for (i, line) in self.lines.iter().enumerate() {
+            let line_num = self.start + i as u32;
+            if keep(line_num) {
+                result.lines.push((line_num, line.clone()));
+                if i == 0 {
+                    result.kept_first_boundary = true;
+                }
+                if i == last_idx {
+                    result.kept_last_boundary = true;
+                }
+            }
+        }
+
+        result
+    }
+}
+
 /// Result of filtering a hunk's content.
 ///
 /// This is an intermediate representation that separates the "what lines were kept"
@@ -57,6 +89,108 @@ pub struct FilteredContent {
 
     /// Whether the filtered additions' last line should lack a trailing newline
     pub new_missing_newline: bool,
+}
+
+impl FilteredContent {
+    /// Build output hunks from this filtered content.
+    ///
+    /// This is where the addition/deletion asymmetry is properly handled:
+    /// - Additions: All go to ONE hunk at the insertion point
+    /// - Deletions: Non-contiguous groups become separate hunks
+    ///
+    /// The `cumulative_delta` parameter tracks the net line changes from
+    /// previous hunks in the file, used to calculate correct `new_start` positions.
+    pub fn into_hunks(self, cumulative_delta: i32) -> Vec<Hunk> {
+        let has_deletions = !self.deletions.is_empty();
+        let has_additions = !self.additions.is_empty();
+
+        // Case 1: Pure additions (no deletions)
+        // All additions share the same insertion point - always one hunk
+        if !has_deletions && has_additions {
+            let old_start = self.insertion_point;
+            let new_start = (old_start as i32 + 1 + cumulative_delta) as u32;
+
+            return vec![Hunk {
+                old: ModifiedLines {
+                    start: old_start,
+                    lines: vec![],
+                    missing_final_newline: false,
+                },
+                new: ModifiedLines {
+                    start: new_start,
+                    lines: self.additions,
+                    missing_final_newline: self.new_missing_newline,
+                },
+            }];
+        }
+
+        // Case 2: Pure deletions (no additions)
+        // Each contiguous group of deletions becomes a separate hunk
+        if has_deletions && !has_additions {
+            let groups = group_contiguous_lines(&self.deletions);
+            let mut hunks = Vec::new();
+            let mut local_delta = cumulative_delta;
+
+            for group in groups {
+                let old_start = group.first_line_num;
+                let new_start = (old_start as i32 - 1 + local_delta) as u32;
+                let num_deletions = group.lines.len();
+
+                // Check if this group has the last line (for no-newline tracking)
+                let group_has_last = self.old_missing_newline
+                    && group
+                        .lines
+                        .last()
+                        .map(|(num, _)| *num == self.deletions.last().map(|(n, _)| *n).unwrap_or(0))
+                        .unwrap_or(false);
+
+                hunks.push(Hunk {
+                    old: ModifiedLines {
+                        start: old_start,
+                        lines: group.lines.into_iter().map(|(_, c)| c).collect(),
+                        missing_final_newline: group_has_last,
+                    },
+                    new: ModifiedLines {
+                        start: new_start,
+                        lines: vec![],
+                        missing_final_newline: false,
+                    },
+                });
+
+                // Each deletion group affects subsequent positions
+                local_delta -= num_deletions as i32;
+            }
+
+            return hunks;
+        }
+
+        // Case 3: Mixed (both deletions and additions)
+        // For now, keep as single hunk - more complex splitting could be added later
+        if has_deletions && has_additions {
+            let old_start = self
+                .deletions
+                .first()
+                .map(|(n, _)| *n)
+                .unwrap_or(self.insertion_point);
+            let new_start = (old_start as i32 + cumulative_delta) as u32;
+
+            return vec![Hunk {
+                old: ModifiedLines {
+                    start: old_start,
+                    lines: self.deletions.into_iter().map(|(_, c)| c).collect(),
+                    missing_final_newline: self.old_missing_newline,
+                },
+                new: ModifiedLines {
+                    start: new_start,
+                    lines: self.additions,
+                    missing_final_newline: self.new_missing_newline,
+                },
+            }];
+        }
+
+        // Case 4: Empty (shouldn't happen - filter returns None for empty)
+        vec![]
+    }
 }
 
 /// A single hunk from a git diff.
@@ -123,8 +257,8 @@ impl Hunk {
         G: FnMut(u32) -> bool,
     {
         // Phase 1: Filter lines
-        let mut old_filtered = filter_lines(&self.old, keep_old);
-        let mut new_filtered = filter_lines(&self.new, keep_new);
+        let mut old_filtered = self.old.filter(keep_old);
+        let mut new_filtered = self.new.filter(keep_new);
 
         if old_filtered.is_empty() && new_filtered.is_empty() {
             return None;
@@ -163,35 +297,6 @@ impl FilterResult {
     fn is_empty(&self) -> bool {
         self.lines.is_empty()
     }
-}
-
-/// Filter lines from a ModifiedLines based on a predicate
-fn filter_lines<F>(source: &ModifiedLines, mut keep: F) -> FilterResult
-where
-    F: FnMut(u32) -> bool,
-{
-    let mut result = FilterResult {
-        lines: Vec::new(),
-        kept_first_boundary: false,
-        kept_last_boundary: false,
-    };
-
-    let last_idx = source.lines.len().saturating_sub(1);
-
-    for (i, line) in source.lines.iter().enumerate() {
-        let line_num = source.start + i as u32;
-        if keep(line_num) {
-            result.lines.push((line_num, line.clone()));
-            if i == 0 {
-                result.kept_first_boundary = true;
-            }
-            if i == last_idx {
-                result.kept_last_boundary = true;
-            }
-        }
-    }
-
-    result
 }
 
 /// Check if we need to insert a line separator

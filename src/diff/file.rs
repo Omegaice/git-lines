@@ -1,4 +1,4 @@
-use super::hunk::{FilteredContent, Hunk, ModifiedLines, group_contiguous_lines};
+use super::hunk::Hunk;
 use std::fmt;
 
 /// A complete diff for a single file.
@@ -86,7 +86,7 @@ impl FileDiff {
             };
 
             // Build output hunks from the filtered content
-            let new_hunks = build_hunks_from_filtered(filtered, cumulative_delta);
+            let new_hunks = filtered.into_hunks(cumulative_delta);
 
             // Update cumulative delta for subsequent hunks
             for h in &new_hunks {
@@ -106,103 +106,6 @@ impl FileDiff {
             })
         }
     }
-}
-
-/// Build output hunks from filtered content.
-///
-/// This is where the addition/deletion asymmetry is properly handled:
-/// - Additions: All go to ONE hunk at the insertion point
-/// - Deletions: Non-contiguous groups become separate hunks
-fn build_hunks_from_filtered(filtered: FilteredContent, cumulative_delta: i32) -> Vec<Hunk> {
-    let has_deletions = !filtered.deletions.is_empty();
-    let has_additions = !filtered.additions.is_empty();
-
-    // Case 1: Pure additions (no deletions)
-    // All additions share the same insertion point - always one hunk
-    if !has_deletions && has_additions {
-        let old_start = filtered.insertion_point;
-        let new_start = (old_start as i32 + 1 + cumulative_delta) as u32;
-
-        return vec![Hunk {
-            old: ModifiedLines {
-                start: old_start,
-                lines: vec![],
-                missing_final_newline: false,
-            },
-            new: ModifiedLines {
-                start: new_start,
-                lines: filtered.additions,
-                missing_final_newline: filtered.new_missing_newline,
-            },
-        }];
-    }
-
-    // Case 2: Pure deletions (no additions)
-    // Each contiguous group of deletions becomes a separate hunk
-    if has_deletions && !has_additions {
-        let groups = group_contiguous_lines(&filtered.deletions);
-        let mut hunks = Vec::new();
-        let mut local_delta = cumulative_delta;
-
-        for group in groups {
-            let old_start = group.first_line_num;
-            let new_start = (old_start as i32 - 1 + local_delta) as u32;
-            let num_deletions = group.lines.len();
-
-            // Check if this group has the last line (for no-newline tracking)
-            let group_has_last = filtered.old_missing_newline
-                && group
-                    .lines
-                    .last()
-                    .map(|(num, _)| *num == filtered.deletions.last().map(|(n, _)| *n).unwrap_or(0))
-                    .unwrap_or(false);
-
-            hunks.push(Hunk {
-                old: ModifiedLines {
-                    start: old_start,
-                    lines: group.lines.into_iter().map(|(_, c)| c).collect(),
-                    missing_final_newline: group_has_last,
-                },
-                new: ModifiedLines {
-                    start: new_start,
-                    lines: vec![],
-                    missing_final_newline: false,
-                },
-            });
-
-            // Each deletion group affects subsequent positions
-            local_delta -= num_deletions as i32;
-        }
-
-        return hunks;
-    }
-
-    // Case 3: Mixed (both deletions and additions)
-    // For now, keep as single hunk - more complex splitting could be added later
-    if has_deletions && has_additions {
-        let old_start = filtered
-            .deletions
-            .first()
-            .map(|(n, _)| *n)
-            .unwrap_or(filtered.insertion_point);
-        let new_start = (old_start as i32 + cumulative_delta) as u32;
-
-        return vec![Hunk {
-            old: ModifiedLines {
-                start: old_start,
-                lines: filtered.deletions.into_iter().map(|(_, c)| c).collect(),
-                missing_final_newline: filtered.old_missing_newline,
-            },
-            new: ModifiedLines {
-                start: new_start,
-                lines: filtered.additions,
-                missing_final_newline: filtered.new_missing_newline,
-            },
-        }];
-    }
-
-    // Case 4: Empty (shouldn't happen - filter returns None for empty)
-    vec![]
 }
 
 impl fmt::Display for FileDiff {

@@ -19,23 +19,23 @@
 //! # Examples
 //!
 //! ```
-//! use git_lines::parse::{parse_file_refs, LineRef};
+//! use git_lines::parse::{FileLineRefs, LineRef};
 //! use std::num::NonZeroU32;
 //!
 //! // Single addition
-//! let refs = parse_file_refs("flake.nix:137").unwrap();
+//! let refs = FileLineRefs::parse("flake.nix:137").unwrap();
 //! assert_eq!(refs.file, "flake.nix");
 //! assert_eq!(refs.refs, vec![LineRef::Add(NonZeroU32::new(137).unwrap())]);
 //!
 //! // Range
-//! let refs = parse_file_refs("config.nix:10..15").unwrap();
+//! let refs = FileLineRefs::parse("config.nix:10..15").unwrap();
 //! assert_eq!(refs.refs, vec![LineRef::AddRange(
 //!     NonZeroU32::new(10).unwrap(),
 //!     NonZeroU32::new(15).unwrap()
 //! )]);
 //!
 //! // Mixed operations
-//! let refs = parse_file_refs("file.nix:-10,12").unwrap();
+//! let refs = FileLineRefs::parse("file.nix:-10,12").unwrap();
 //! assert_eq!(refs.refs, vec![
 //!     LineRef::Delete(NonZeroU32::new(10).unwrap()),
 //!     LineRef::Add(NonZeroU32::new(12).unwrap())
@@ -96,65 +96,67 @@ pub struct FileLineRefs {
     pub refs: Vec<LineRef>,
 }
 
-/// Parse a file:refs string into structured data.
-///
-/// # Format
-///
-/// `FILE:REFS` where REFS is a comma-separated list of:
-/// - `N` - Addition at line N
-/// - `-N` - Deletion of line N
-/// - `N..M` - Addition range
-/// - `-N..-M` - Deletion range
-///
-/// # Examples
-///
-/// ```
-/// use git_lines::parse::{parse_file_refs, LineRef};
-/// use std::num::NonZeroU32;
-///
-/// let refs = parse_file_refs("flake.nix:137").unwrap();
-/// assert_eq!(refs.file, "flake.nix");
-/// assert_eq!(refs.refs, vec![LineRef::Add(NonZeroU32::new(137).unwrap())]);
-///
-/// let refs = parse_file_refs("file.nix:10..15").unwrap();
-/// assert_eq!(refs.refs, vec![LineRef::AddRange(
-///     NonZeroU32::new(10).unwrap(),
-///     NonZeroU32::new(15).unwrap()
-/// )]);
-///
-/// let refs = parse_file_refs("file.nix:10,15,-20").unwrap();
-/// assert_eq!(refs.refs, vec![
-///     LineRef::Add(NonZeroU32::new(10).unwrap()),
-///     LineRef::Add(NonZeroU32::new(15).unwrap()),
-///     LineRef::Delete(NonZeroU32::new(20).unwrap())
-/// ]);
-/// ```
-///
-/// # Errors
-///
-/// Returns [`ParseError`] if:
-/// - Input doesn't contain `:` separator
-/// - File name is empty or whitespace
-/// - No line references provided
-/// - Line numbers are invalid
-pub fn parse_file_refs(input: &str) -> Result<FileLineRefs, ParseError> {
-    let (file, refs_str) = input
-        .split_once(':')
-        .ok_or_else(|| ParseError::InvalidFormat {
-            input: input.to_string(),
-        })?;
+impl FileLineRefs {
+    /// Parse a file:refs string into structured data.
+    ///
+    /// # Format
+    ///
+    /// `FILE:REFS` where REFS is a comma-separated list of:
+    /// - `N` - Addition at line N
+    /// - `-N` - Deletion of line N
+    /// - `N..M` - Addition range
+    /// - `-N..-M` - Deletion range
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use git_lines::parse::{FileLineRefs, LineRef};
+    /// use std::num::NonZeroU32;
+    ///
+    /// let refs = FileLineRefs::parse("flake.nix:137").unwrap();
+    /// assert_eq!(refs.file, "flake.nix");
+    /// assert_eq!(refs.refs, vec![LineRef::Add(NonZeroU32::new(137).unwrap())]);
+    ///
+    /// let refs = FileLineRefs::parse("file.nix:10..15").unwrap();
+    /// assert_eq!(refs.refs, vec![LineRef::AddRange(
+    ///     NonZeroU32::new(10).unwrap(),
+    ///     NonZeroU32::new(15).unwrap()
+    /// )]);
+    ///
+    /// let refs = FileLineRefs::parse("file.nix:10,15,-20").unwrap();
+    /// assert_eq!(refs.refs, vec![
+    ///     LineRef::Add(NonZeroU32::new(10).unwrap()),
+    ///     LineRef::Add(NonZeroU32::new(15).unwrap()),
+    ///     LineRef::Delete(NonZeroU32::new(20).unwrap())
+    /// ]);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError`] if:
+    /// - Input doesn't contain `:` separator
+    /// - File name is empty or whitespace
+    /// - No line references provided
+    /// - Line numbers are invalid
+    pub fn parse(input: &str) -> Result<Self, ParseError> {
+        let (file, refs_str) = input
+            .split_once(':')
+            .ok_or_else(|| ParseError::InvalidFormat {
+                input: input.to_string(),
+            })?;
 
-    let file = file.trim();
-    if file.is_empty() {
-        return Err(ParseError::EmptyFileName {
-            input: input.to_string(),
-        });
+        let file = file.trim();
+        if file.is_empty() {
+            return Err(ParseError::EmptyFileName {
+                input: input.to_string(),
+            });
+        }
+
+        Ok(Self {
+            file: file.to_string(),
+            refs: parse_line_refs(refs_str)?,
+        })
     }
-
-    Ok(FileLineRefs {
-        file: file.to_string(),
-        refs: parse_line_refs(refs_str)?,
-    })
 }
 
 /// Parse the line references part (after the colon)
@@ -242,21 +244,21 @@ mod tests {
 
     #[test]
     fn parse_single_addition() {
-        let result = parse_file_refs("flake.nix:137").unwrap();
+        let result = FileLineRefs::parse("flake.nix:137").unwrap();
         assert_eq!(result.file, "flake.nix");
         assert_eq!(result.refs, vec![LineRef::Add(nz(137))]);
     }
 
     #[test]
     fn parse_addition_range() {
-        let result = parse_file_refs("flake.nix:39..43").unwrap();
+        let result = FileLineRefs::parse("flake.nix:39..43").unwrap();
         assert_eq!(result.file, "flake.nix");
         assert_eq!(result.refs, vec![LineRef::AddRange(nz(39), nz(43))]);
     }
 
     #[test]
     fn parse_multiple_additions() {
-        let result = parse_file_refs("default.nix:40,41").unwrap();
+        let result = FileLineRefs::parse("default.nix:40,41").unwrap();
         assert_eq!(result.file, "default.nix");
         assert_eq!(
             result.refs,
@@ -266,21 +268,21 @@ mod tests {
 
     #[test]
     fn parse_single_deletion() {
-        let result = parse_file_refs("zsh.nix:-15").unwrap();
+        let result = FileLineRefs::parse("zsh.nix:-15").unwrap();
         assert_eq!(result.file, "zsh.nix");
         assert_eq!(result.refs, vec![LineRef::Delete(nz(15))]);
     }
 
     #[test]
     fn parse_deletion_range() {
-        let result = parse_file_refs("gtk.nix:-10..-11").unwrap();
+        let result = FileLineRefs::parse("gtk.nix:-10..-11").unwrap();
         assert_eq!(result.file, "gtk.nix");
         assert_eq!(result.refs, vec![LineRef::DeleteRange(nz(10), nz(11))]);
     }
 
     #[test]
     fn parse_mixed_refs() {
-        let result = parse_file_refs("gtk.nix:-10,-11,12").unwrap();
+        let result = FileLineRefs::parse("gtk.nix:-10,-11,12").unwrap();
         assert_eq!(result.file, "gtk.nix");
         assert_eq!(
             result.refs,
@@ -294,7 +296,7 @@ mod tests {
 
     #[test]
     fn parse_range_with_deletion() {
-        let result = parse_file_refs("file.nix:10..15,-20").unwrap();
+        let result = FileLineRefs::parse("file.nix:10..15,-20").unwrap();
         assert_eq!(result.file, "file.nix");
         assert_eq!(
             result.refs,
@@ -304,66 +306,66 @@ mod tests {
 
     #[test]
     fn parse_invalid_format() {
-        assert!(parse_file_refs("no_colon").is_err());
+        assert!(FileLineRefs::parse("no_colon").is_err());
     }
 
     #[test]
     fn parse_empty_refs() {
-        assert!(parse_file_refs("file.nix:").is_err());
+        assert!(FileLineRefs::parse("file.nix:").is_err());
     }
 
     #[test]
     fn parse_empty_file_name() {
-        let result = parse_file_refs(":10");
+        let result = FileLineRefs::parse(":10");
         assert!(matches!(result, Err(ParseError::EmptyFileName { .. })));
     }
 
     #[test]
     fn parse_empty_file_with_range() {
-        let result = parse_file_refs(":10..15");
+        let result = FileLineRefs::parse(":10..15");
         assert!(matches!(result, Err(ParseError::EmptyFileName { .. })));
     }
 
     #[test]
     fn parse_whitespace_file_name() {
-        let result = parse_file_refs("  :10");
+        let result = FileLineRefs::parse("  :10");
         assert!(matches!(result, Err(ParseError::EmptyFileName { .. })));
     }
 
     #[test]
     fn parse_just_colon() {
-        let result = parse_file_refs(":");
+        let result = FileLineRefs::parse(":");
         assert!(result.is_err());
     }
 
     #[test]
     fn parse_zero_line_number() {
-        let result = parse_file_refs("file.nix:0");
+        let result = FileLineRefs::parse("file.nix:0");
         assert!(matches!(result, Err(ParseError::InvalidLineNumber { .. })));
     }
 
     #[test]
     fn parse_zero_deletion() {
-        let result = parse_file_refs("file.nix:-0");
+        let result = FileLineRefs::parse("file.nix:-0");
         assert!(matches!(result, Err(ParseError::InvalidLineNumber { .. })));
     }
 
     #[test]
     fn parse_zero_in_range_start() {
-        let result = parse_file_refs("file.nix:0..10");
+        let result = FileLineRefs::parse("file.nix:0..10");
         assert!(matches!(result, Err(ParseError::InvalidLineNumber { .. })));
     }
 
     #[test]
     fn parse_zero_in_range_end() {
-        let result = parse_file_refs("file.nix:10..0");
+        let result = FileLineRefs::parse("file.nix:10..0");
         // Zero check happens before range validation
         assert!(matches!(result, Err(ParseError::InvalidLineNumber { .. })));
     }
 
     #[test]
     fn parse_inverted_range() {
-        let result = parse_file_refs("file.nix:15..10");
+        let result = FileLineRefs::parse("file.nix:15..10");
         assert!(matches!(
             result,
             Err(ParseError::InvalidRange { start: 15, end: 10 })
@@ -372,7 +374,7 @@ mod tests {
 
     #[test]
     fn parse_inverted_deletion_range() {
-        let result = parse_file_refs("file.nix:-15..-10");
+        let result = FileLineRefs::parse("file.nix:-15..-10");
         assert!(matches!(
             result,
             Err(ParseError::InvalidRange { start: 15, end: 10 })
@@ -382,7 +384,7 @@ mod tests {
     #[test]
     fn parse_equal_range() {
         // 10..10 is valid - it's a single-element range
-        let result = parse_file_refs("file.nix:10..10").unwrap();
+        let result = FileLineRefs::parse("file.nix:10..10").unwrap();
         assert_eq!(result.refs, vec![LineRef::AddRange(nz(10), nz(10))]);
     }
 }

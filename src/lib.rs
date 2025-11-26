@@ -135,7 +135,7 @@ impl GitLines {
     /// stager.stage("config.nix:-10,-11,12").unwrap();
     /// ```
     pub fn stage(&self, file_ref: &str) -> Result<(), GitLinesError> {
-        self.stage_lines(&parse::parse_file_refs(file_ref)?)
+        self.stage_lines(&parse::FileLineRefs::parse(file_ref)?)
     }
 
     /// Get formatted diff output for specified files (or all files if empty)
